@@ -10,44 +10,42 @@
 //
 // API Docs: https://api.mangadex.org/docs
 
-class MangaDexSource {
-	constructor() {
-		this.id = "mangadex";
-		this.name = "MangaDex";
-		this.version = "1.0.0";
-		this.icon = "📖";
-		this.description = "Search manga from MangaDex.org — free, community-run manga platform";
-		this.contentType = "manga";
+__cinderExport = {
+	id: "mangadex",
+	name: "MangaDex",
+	version: "1.0.0",
+	icon: "📖",
+	description: "Search manga from MangaDex.org — free, community-run manga platform",
+	contentType: "manga",
 
-		this.capabilities = {
-			search: true,
-			discover: true,
-			download: false,
-			resolve: false,
-			manga: true,
-		};
-	}
+	capabilities: {
+		search: true,
+		discover: true,
+		download: false,
+		resolve: false,
+		manga: true,
+	},
 
 	// ── Helpers ──────────────────────────────────────
 
 	_getCoverUrl(mangaId, coverId, fileName) {
 		if (!fileName) return undefined;
 		return `https://uploads.mangadex.org/covers/${mangaId}/${fileName}.256.jpg`;
-	}
+	},
 
 	_getRelationship(relationships, type) {
 		return relationships?.find((r) => r.type === type);
-	}
+	},
 
 	_getAuthorName(relationships) {
 		const author = this._getRelationship(relationships, "author");
 		return author?.attributes?.name || "Unknown";
-	}
+	},
 
 	_getCoverFileName(relationships) {
 		const cover = this._getRelationship(relationships, "cover_art");
 		return cover?.attributes?.fileName || null;
-	}
+	},
 
 	// ── Search ───────────────────────────────────────
 
@@ -103,7 +101,7 @@ class MangaDexSource {
 		}
 
 		return results;
-	}
+	},
 
 	// ── Discover ─────────────────────────────────────
 
@@ -113,7 +111,7 @@ class MangaDexSource {
 			{ id: "latest", title: "Latest Updates", icon: "🆕" },
 			{ id: "top-rated", title: "Top Rated", icon: "⭐" },
 		];
-	}
+	},
 
 	async getDiscoverItems(sectionId, page = 0) {
 		const limit = 20;
@@ -159,7 +157,7 @@ class MangaDexSource {
 		}
 
 		return results;
-	}
+	},
 
 	// ── Manga Details ────────────────────────────────
 
@@ -199,7 +197,7 @@ class MangaDexSource {
 				.map((t) => t.attributes?.name?.en)
 				.filter(Boolean),
 		};
-	}
+	},
 
 	// ── Chapters ──────────────────────────────────────
 
@@ -238,7 +236,7 @@ class MangaDexSource {
 		}
 
 		return chapters;
-	}
+	},
 
 	// ── Pages ─────────────────────────────────────────
 
@@ -259,7 +257,7 @@ class MangaDexSource {
 		return pageFiles.map((fileName) => ({
 			url: `${baseUrl}/data/${hash}/${fileName}`,
 		}));
-	}
+	},
 
 	// ── Settings ──────────────────────────────────────
 
@@ -277,6 +275,4 @@ class MangaDexSource {
 			},
 		];
 	}
-}
-
-__cinderExport = new MangaDexSource();
+};
