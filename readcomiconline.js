@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.1",
+	version: "1.0.2",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "manga",
@@ -141,44 +141,32 @@ __cinderExport = {
 		// readType=1 = all pages on one page
 		const url = `${this._baseUrl}${chapterId}${chapterId.includes("?") ? "&" : "?"}readType=1`;
 
-		// Page images are loaded via JavaScript — need WebView bypass
+		// Page images start with empty src="" and are populated by obfuscated JS.
+		// We use fetchBrowser (WebView) which runs the JS, then extract once images load.
 		const res = await cinder.fetchBrowser(url);
 
 		if (!res.data) return [];
 
-		const doc = cinder.parseHTML(res.data);
 		const pages = [];
 
-		// Try divImage containers (common RCO pattern)
-		const imgEls = doc.querySelectorAll("#divImage img, .containerPage img, img[id^='img']");
-		for (const img of imgEls) {
-			const src = img.attr("src") || img.attr("data-src") || "";
-			if (src && (src.includes("2.bp.blogspot") || src.includes("cdn") || src.includes("comic"))) {
-				pages.push({ url: src });
-			}
-		}
+		// After WebView JS runs, images should have their src populated.
+		// Find all <img> tags with non-empty src that look like comic page images.
+		const imgRegex = /<img[^>]*src="(https?:\/\/[^"]+)"[^>]*>/gi;
+		let match;
+		const seen = {};
 
-		// Fallback: regex for lstImages or any blogspot/cdn image URLs
-		if (pages.length === 0) {
-			const lstRegex = /lstImages\.push\("([^"]+)"\)/g;
-			let match;
-			while ((match = lstRegex.exec(res.data)) !== null) {
-				pages.push({ url: match[1] });
-			}
-		}
-
-		// Fallback: find all large images
-		if (pages.length === 0) {
-			const imgRegex = /(https?:\/\/[^\s"'<>]+\.(jpg|png|webp))/gi;
-			let match;
-			const seen = {};
-			while ((match = imgRegex.exec(res.data)) !== null) {
-				const src = match[1];
-				if (seen[src]) continue;
-				if (src.includes("Uploads") || src.includes("icon") || src.includes("logo")) continue;
-				seen[src] = true;
-				pages.push({ url: src });
-			}
+		while ((match = imgRegex.exec(res.data)) !== null) {
+			const src = match[1];
+			if (seen[src]) continue;
+			// Skip site chrome images (ads, icons, avatars, loading gif)
+			if (src.includes("/Content/") || src.includes("/Uploads/") ||
+				src.includes("icon") || src.includes("logo") ||
+				src.includes("avatar") || src.includes("loading") ||
+				src.includes("google") || src.includes("analytics") ||
+				src.includes(".gif") || src.includes("dreemy") ||
+				src.includes("ads") || src.includes("banner")) continue;
+			seen[src] = true;
+			pages.push({ url: src });
 		}
 
 		return pages;
