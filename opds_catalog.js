@@ -9,8 +9,8 @@
 __cinderExport = {
 	id: "opds-catalog",
 	name: "OPDS Catalog",
-	version: "1.0.0",
-	icon: "📡",
+	version: "1.0.1",
+	icon: "🌐",
 	description: "Connect to your OPDS-compatible server (Komga, Kavita, Calibre-web, COPS)",
 	contentType: "books",
 

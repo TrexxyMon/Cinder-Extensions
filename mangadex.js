@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "mangadex",
 	name: "MangaDex",
-	version: "1.0.0",
+	version: "1.0.1",
 	icon: "📖",
 	description: "Search manga from MangaDex.org — free, community-run manga platform",
 	contentType: "manga",
