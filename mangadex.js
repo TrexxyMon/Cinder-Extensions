@@ -55,11 +55,12 @@ __cinderExport = {
 
 		const encodedIncludesCover = encodeURIComponent("includes[]") + "=cover_art";
 		const encodedIncludesAuthor = encodeURIComponent("includes[]") + "=author";
-		const encodedSafe = encodeURIComponent("contentRating[]") + "=safe";
-		const encodedSuggestive = encodeURIComponent("contentRating[]") + "=suggestive";
 		const encodedOrder = encodeURIComponent("order[relevance]") + "=desc";
 
-		const url = `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}&${encodedIncludesCover}&${encodedIncludesAuthor}&${encodedSafe}&${encodedSuggestive}&${encodedOrder}`;
+		// Note: We deliberately exclude contentRating[] filters here (like safe/suggestive)
+		// so that the extension returns all content. The Cinder app has its own global 
+		// Explicit Content Filter that will intercept and hide mature entries based on the user's app settings.
+		const url = `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}&${encodedIncludesCover}&${encodedIncludesAuthor}&${encodedOrder}`;
 
 		const res = await cinder.fetch(url, {
 			headers: { "Accept": "application/json" },
