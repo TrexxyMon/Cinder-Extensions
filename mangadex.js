@@ -63,7 +63,10 @@ __cinderExport = {
 		const url = `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}&${encodedIncludesCover}&${encodedIncludesAuthor}&${encodedOrder}`;
 
 		const res = await cinder.fetch(url, {
-			headers: { "Accept": "application/json" },
+			headers: { 
+				"Accept": "application/json",
+				"User-Agent": "CinderApp/1.0 (Mobile; Cinder)"
+			},
 		});
 
 		if (res.status !== 200) {
@@ -134,7 +137,10 @@ __cinderExport = {
 		}
 
 		const res = await cinder.fetch(url, {
-			headers: { "Accept": "application/json" },
+			headers: { 
+				"Accept": "application/json",
+				"User-Agent": "CinderApp/1.0 (Mobile; Cinder)"
+			},
 		});
 
 		if (res.status !== 200) return [];
@@ -172,7 +178,10 @@ __cinderExport = {
 		const url = `https://api.mangadex.org/manga/${id}?includes[]=cover_art&includes[]=author&includes[]=artist`;
 
 		const res = await cinder.fetch(url, {
-			headers: { "Accept": "application/json" },
+			headers: { 
+				"Accept": "application/json",
+				"User-Agent": "CinderApp/1.0 (Mobile; Cinder)"
+			},
 		});
 
 		if (res.status !== 200) throw new Error("Failed to fetch manga details");
@@ -218,7 +227,10 @@ __cinderExport = {
 			const url = `https://api.mangadex.org/manga/${mangaId}/feed?limit=${limit}&offset=${offset}&translatedLanguage[]=en&order[chapter]=asc&includes[]=scanlation_group`;
 
 			const res = await cinder.fetch(url, {
-				headers: { "Accept": "application/json" },
+				headers: { 
+					"Accept": "application/json",
+					"User-Agent": "CinderApp/1.0 (Mobile; Cinder)"
+				},
 			});
 
 			if (res.status !== 200) break;
@@ -251,7 +263,10 @@ __cinderExport = {
 		const url = `https://api.mangadex.org/at-home/server/${chapterId}`;
 
 		const res = await cinder.fetch(url, {
-			headers: { "Accept": "application/json" },
+			headers: { 
+				"Accept": "application/json",
+				"User-Agent": "CinderApp/1.0 (Mobile; Cinder)"
+			},
 		});
 
 		if (res.status !== 200) throw new Error("Failed to fetch pages");
