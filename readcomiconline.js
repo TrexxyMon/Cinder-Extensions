@@ -1,0 +1,336 @@
+// ─── ReadComicOnline Extension for Cinder ─────────────────────
+//
+// Connects to readcomiconline.li for western comic reading.
+// Search and chapter listing use regular fetch.
+// Page images require fetchBrowser (WebView) since they're JS-loaded.
+//
+// This is a COMMUNITY EXTENSION — all site-specific logic is here,
+// not in the Cinder app itself.
+
+__cinderExport = {
+	id: "readcomiconline",
+	name: "ReadComicOnline",
+	version: "1.0.0",
+	icon: "📚",
+	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
+	contentType: "manga",
+
+	capabilities: {
+		search: true,
+		discover: true,
+		download: false,
+		resolve: false,
+		manga: true,
+	},
+
+	_baseUrl: "https://readcomiconline.li",
+
+	// ── Search ───────────────────────────────────────
+
+	async search(query, page = 0) {
+		const url = `${this._baseUrl}/Search/Comic?keyword=${encodeURIComponent(query)}`;
+
+		const res = await cinder.fetch(url, {
+			headers: {
+				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+				"Accept": "text/html",
+			},
+		});
+
+		if (res.status !== 200) return [];
+
+		const doc = cinder.parseHTML(res.data);
+		const items = [];
+		const rows = doc.querySelectorAll(".item");
+
+		for (const row of rows) {
+			const linkEl = row.querySelector("a");
+			const imgEl = row.querySelector("img");
+
+			if (!linkEl) continue;
+
+			const href = linkEl.attr("href") || "";
+			const title = linkEl.attr("title") || linkEl.text().trim();
+			const slug = href.replace("/Comic/", "").replace(/\/$/, "");
+
+			if (!slug || !title) continue;
+
+			let cover = "";
+			if (imgEl) {
+				const src = imgEl.attr("src") || "";
+				if (src.startsWith("/")) {
+					cover = this._baseUrl + src;
+				} else if (src.startsWith("http")) {
+					cover = src;
+				}
+			}
+
+			items.push({
+				id: slug,
+				title: title,
+				author: "Unknown",
+				cover: cover,
+				url: this._baseUrl + href,
+				format: "comics",
+				extra: { slug: slug },
+			});
+		}
+
+		// Fallback: regex-based parsing if DOM parsing yields nothing
+		if (items.length === 0) {
+			const comicLinks = [];
+			const linkRegex = /href="\/Comic\/([^"]+)"[^>]*title="([^"]*)"[^>]*/g;
+			let match;
+			while ((match = linkRegex.exec(res.data)) !== null) {
+				const slug = match[1];
+				const title = match[2] || slug.replace(/-/g, " ");
+				if (comicLinks.some(c => c.slug === slug)) continue;
+				comicLinks.push({ slug, title });
+			}
+
+			// Find covers
+			const coverMap = {};
+			const coverRegex = /src="(\/Uploads[^"]+)"/g;
+			let coverMatch;
+			while ((coverMatch = coverRegex.exec(res.data)) !== null) {
+				coverMap[Object.keys(coverMap).length] = this._baseUrl + coverMatch[1];
+			}
+
+			for (let i = 0; i < comicLinks.length; i++) {
+				const c = comicLinks[i];
+				items.push({
+					id: c.slug,
+					title: c.title,
+					author: "Unknown",
+					cover: coverMap[i] || "",
+					url: `${this._baseUrl}/Comic/${c.slug}`,
+					format: "comics",
+					extra: { slug: c.slug },
+				});
+			}
+		}
+
+		return items;
+	},
+
+	// ── Chapters (Issues) ────────────────────────────
+
+	async getChapters(mangaId) {
+		const url = `${this._baseUrl}/Comic/${mangaId}`;
+		const res = await cinder.fetch(url, {
+			headers: {
+				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
+				"Accept": "text/html",
+			},
+		});
+
+		if (res.status !== 200) return [];
+
+		const chapters = [];
+
+		// Parse issue links via regex (more reliable than DOM for table rows)
+		const issueRegex = /href="(\/Comic\/[^"]*\/Issue-([^"?]+)[^"]*)"/g;
+		let match;
+		const seen = {};
+
+		while ((match = issueRegex.exec(res.data)) !== null) {
+			const fullPath = match[1];
+			const issueNum = match[2];
+			const key = issueNum;
+
+			if (seen[key]) continue;
+			seen[key] = true;
+
+			chapters.push({
+				id: fullPath,
+				title: `Issue #${issueNum.replace(/-/g, ".")}`,
+				chapter: issueNum.replace(/-/g, "."),
+				url: this._baseUrl + fullPath,
+			});
+		}
+
+		// Also check for full-issue / TPB links
+		const fullRegex = /href="(\/Comic\/[^"]*\/Full[^"]*)"/g;
+		while ((match = fullRegex.exec(res.data)) !== null) {
+			const fullPath = match[1];
+			if (seen["full"]) continue;
+			seen["full"] = true;
+
+			chapters.push({
+				id: fullPath,
+				title: "Full Issue",
+				chapter: "0",
+				url: this._baseUrl + fullPath,
+			});
+		}
+
+		return chapters;
+	},
+
+	// ── Pages (Images) ───────────────────────────────
+
+	async getPages(chapterId) {
+		// readType=1 = all pages on one page
+		const url = `${this._baseUrl}${chapterId}${chapterId.includes("?") ? "&" : "?"}readType=1`;
+
+		// Page images are loaded via JavaScript — need WebView bypass
+		const res = await cinder.fetchBrowser(url);
+
+		if (!res.data) return [];
+
+		const doc = cinder.parseHTML(res.data);
+		const pages = [];
+
+		// Try divImage containers (common RCO pattern)
+		const imgEls = doc.querySelectorAll("#divImage img, .containerPage img, img[id^='img']");
+		for (const img of imgEls) {
+			const src = img.attr("src") || img.attr("data-src") || "";
+			if (src && (src.includes("2.bp.blogspot") || src.includes("cdn") || src.includes("comic"))) {
+				pages.push({ url: src });
+			}
+		}
+
+		// Fallback: regex for lstImages or any blogspot/cdn image URLs
+		if (pages.length === 0) {
+			const lstRegex = /lstImages\.push\("([^"]+)"\)/g;
+			let match;
+			while ((match = lstRegex.exec(res.data)) !== null) {
+				pages.push({ url: match[1] });
+			}
+		}
+
+		// Fallback: find all large images
+		if (pages.length === 0) {
+			const imgRegex = /(https?:\/\/[^\s"'<>]+\.(jpg|png|webp))/gi;
+			let match;
+			const seen = {};
+			while ((match = imgRegex.exec(res.data)) !== null) {
+				const src = match[1];
+				if (seen[src]) continue;
+				if (src.includes("Uploads") || src.includes("icon") || src.includes("logo")) continue;
+				seen[src] = true;
+				pages.push({ url: src });
+			}
+		}
+
+		return pages;
+	},
+
+	// ── Manga Details ────────────────────────────────
+
+	async getMangaDetails(id) {
+		const url = `${this._baseUrl}/Comic/${id}`;
+		const res = await cinder.fetch(url, {
+			headers: {
+				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
+				"Accept": "text/html",
+			},
+		});
+
+		if (res.status !== 200) throw new Error("Failed to load comic details");
+
+		const doc = cinder.parseHTML(res.data);
+
+		const title = (doc.querySelector(".barContent h2, .bigChar") || {}).text?.() || id.replace(/-/g, " ");
+		const descEl = doc.querySelector(".summary, .barContent p");
+		const description = descEl ? descEl.text().trim() : "";
+
+		const coverEl = doc.querySelector(".rightBox img, .barContent img");
+		let cover = "";
+		if (coverEl) {
+			const src = coverEl.attr("src") || "";
+			cover = src.startsWith("/") ? this._baseUrl + src : src;
+		}
+
+		// Extract genres
+		const genres = [];
+		const genreLinks = doc.querySelectorAll("a[href*='Genre']");
+		for (const g of genreLinks) {
+			const text = g.text().trim();
+			if (text) genres.push(text);
+		}
+
+		return {
+			id: id,
+			title: title,
+			author: "Various",
+			description: description,
+			cover: cover,
+			genres: genres,
+			status: "unknown",
+		};
+	},
+
+	// ── Discover ─────────────────────────────────────
+
+	async getDiscoverSections() {
+		return [
+			{ id: "popular", title: "🔥 Popular Comics", icon: "flame" },
+			{ id: "latest", title: "📚 Latest Updates", icon: "time" },
+		];
+	},
+
+	async getDiscoverItems(sectionId, page = 0) {
+		let url;
+		if (sectionId === "popular") {
+			url = `${this._baseUrl}/ComicList/MostPopular`;
+		} else {
+			url = `${this._baseUrl}/ComicList/LatestUpdate`;
+		}
+
+		if (page > 0) {
+			url += `?page=${page + 1}`;
+		}
+
+		const res = await cinder.fetch(url, {
+			headers: {
+				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
+				"Accept": "text/html",
+			},
+		});
+
+		if (res.status !== 200) return [];
+
+		// Reuse search parser (same HTML structure)
+		return this._parseComicList(res.data);
+	},
+
+	_parseComicList(html) {
+		const items = [];
+		const linkRegex = /href="\/Comic\/([^"]+)"[^>]*>/g;
+		const coverRegex = /src="(\/Uploads[^"]+)"/g;
+		const titleRegex = /title="([^"]+)"/g;
+
+		const comics = [];
+		let match;
+		while ((match = linkRegex.exec(html)) !== null) {
+			const slug = match[1];
+			if (comics.some(c => c === slug)) continue;
+			comics.push(slug);
+		}
+
+		const covers = [];
+		while ((match = coverRegex.exec(html)) !== null) {
+			covers.push(this._baseUrl + match[1]);
+		}
+
+		for (let i = 0; i < comics.length; i++) {
+			items.push({
+				id: comics[i],
+				title: comics[i].replace(/-/g, " "),
+				author: "Unknown",
+				cover: covers[i] || "",
+				url: `${this._baseUrl}/Comic/${comics[i]}`,
+				format: "comics",
+			});
+		}
+
+		return items;
+	},
+
+	// ── Settings ──────────────────────────────────────
+
+	getSettings() {
+		return [];
+	},
+};
