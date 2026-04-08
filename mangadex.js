@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "mangadex",
 	name: "MangaDex",
-	version: "1.0.1",
+	version: "1.0.2",
 	icon: "📖",
 	description: "Search manga from MangaDex.org — free, community-run manga platform",
 	contentType: "manga",
@@ -53,7 +53,13 @@ __cinderExport = {
 		const limit = 20;
 		const offset = page * limit;
 
-		const url = `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}&includes[]=cover_art&includes[]=author&contentRating[]=safe&contentRating[]=suggestive&order[relevance]=desc`;
+		const encodedIncludesCover = encodeURIComponent("includes[]") + "=cover_art";
+		const encodedIncludesAuthor = encodeURIComponent("includes[]") + "=author";
+		const encodedSafe = encodeURIComponent("contentRating[]") + "=safe";
+		const encodedSuggestive = encodeURIComponent("contentRating[]") + "=suggestive";
+		const encodedOrder = encodeURIComponent("order[relevance]") + "=desc";
+
+		const url = `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}&${encodedIncludesCover}&${encodedIncludesAuthor}&${encodedSafe}&${encodedSuggestive}&${encodedOrder}`;
 
 		const res = await cinder.fetch(url, {
 			headers: { "Accept": "application/json" },
