@@ -11,20 +11,22 @@
 // API Docs: https://api.mangadex.org/docs
 
 class MangaDexSource {
-	id = "mangadex";
-	name = "MangaDex";
-	version = "1.0.0";
-	icon = "📖";
-	description = "Search manga from MangaDex.org — free, community-run manga platform";
-	contentType = "manga";
+	constructor() {
+		this.id = "mangadex";
+		this.name = "MangaDex";
+		this.version = "1.0.0";
+		this.icon = "📖";
+		this.description = "Search manga from MangaDex.org — free, community-run manga platform";
+		this.contentType = "manga";
 
-	capabilities = {
-		search: true,
-		discover: true,
-		download: false,
-		resolve: false,
-		manga: true,
-	};
+		this.capabilities = {
+			search: true,
+			discover: true,
+			download: false,
+			resolve: false,
+			manga: true,
+		};
+	}
 
 	// ── Helpers ──────────────────────────────────────
 

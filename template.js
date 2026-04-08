@@ -35,24 +35,26 @@
 //   Date, RegExp, Math, Error
 
 class MySource {
-	// ── Required Properties ─────────────────────────
-	id = "my-source-id";           // Unique identifier (lowercase, dashes ok)
-	name = "My Source";            // Display name
-	version = "1.0.0";            // Semver version
-	icon = "📚";                   // Emoji or icon URL
-	description = "A short description of what this extension does";
+	constructor() {
+		// ── Required Properties ─────────────────────────
+		this.id = "my-source-id";           // Unique identifier (lowercase, dashes ok)
+		this.name = "My Source";            // Display name
+		this.version = "1.0.0";            // Semver version
+		this.icon = "📚";                   // Emoji or icon URL
+		this.description = "A short description of what this extension does";
 
-	// Content type: "books" | "comics" | "manga" | "audiobooks"
-	contentType = "books";
+		// Content type: "books" | "comics" | "manga" | "audiobooks"
+		this.contentType = "books";
 
-	// Declare what this extension can do
-	capabilities = {
-		search: true,              // Can search for content
-		discover: false,           // Has browse/discover sections
-		download: true,            // Has direct download URLs in search results
-		resolve: true,             // Can resolve a search result to a download URL
-		manga: false,              // Has getChapters() and getPages() for manga reading
-	};
+		// Declare what this extension can do
+		this.capabilities = {
+			search: true,              // Can search for content
+			discover: false,           // Has browse/discover sections
+			download: true,            // Has direct download URLs in search results
+			resolve: true,             // Can resolve a search result to a download URL
+			manga: false,              // Has getChapters() and getPages() for manga reading
+		};
+	}
 
 	// ── Search ──────────────────────────────────────
 	// Required if capabilities.search = true

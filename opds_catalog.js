@@ -10,20 +10,22 @@
 // This is a SAMPLE EXTENSION for testing/development.
 
 class OPDSSource {
-	id = "opds-catalog";
-	name = "OPDS Catalog";
-	version = "1.0.0";
-	icon = "📡";
-	description = "Connect to your OPDS-compatible server (Komga, Kavita, Calibre-web, COPS)";
-	contentType = "books";
+	constructor() {
+		this.id = "opds-catalog";
+		this.name = "OPDS Catalog";
+		this.version = "1.0.0";
+		this.icon = "📡";
+		this.description = "Connect to your OPDS-compatible server (Komga, Kavita, Calibre-web, COPS)";
+		this.contentType = "books";
 
-	capabilities = {
-		search: true,
-		discover: true,
-		download: true,
-		resolve: false,
-		manga: false,
-	};
+		this.capabilities = {
+			search: true,
+			discover: true,
+			download: true,
+			resolve: false,
+			manga: false,
+		};
+	}
 
 	// ── Helpers ──────────────────────────────────────
 
