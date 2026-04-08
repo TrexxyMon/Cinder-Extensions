@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "opds-catalog",
 	name: "OPDS Catalog",
-	version: "1.0.1",
+	version: "1.0.3",
 	icon: "🌐",
 	description: "Connect to your OPDS-compatible server (Komga, Kavita, Calibre-web, COPS)",
 	contentType: "books",
@@ -25,11 +25,12 @@ __cinderExport = {
 	// ── Helpers ──────────────────────────────────────
 
 	async _fetchOPDS(url) {
-		const settings = this.getSettings().reduce((acc, def) => {
-			const val = cinder.store.get(def.id) ?? def.defaultValue;
-			acc[def.id] = val;
-			return acc;
-		}, {});
+		const defs = this.getSettings();
+		const settings = {};
+		for (const def of defs) {
+			const val = await cinder.store.get(def.id);
+			settings[def.id] = val ?? def.defaultValue;
+		}
 
 		const headers = { "Accept": "application/atom+xml, application/xml" };
 
@@ -178,11 +179,12 @@ __cinderExport = {
 	// ── Download ─────────────────────────────────────
 
 	async resolve(item) {
-		const settings = this.getSettings().reduce((acc, def) => {
-			const val = cinder.store.get(def.id) ?? def.defaultValue;
-			acc[def.id] = val;
-			return acc;
-		}, {});
+		const defs = this.getSettings();
+		const settings = {};
+		for (const def of defs) {
+			const val = await cinder.store.get(def.id);
+			settings[def.id] = val ?? def.defaultValue;
+		}
 
 		const headers = {};
 
