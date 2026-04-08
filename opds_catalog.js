@@ -40,7 +40,7 @@ __cinderExport = {
 
 		if (!url) {
 			url = settings.server_url;
-			if (!url) throw new Error("Server URL not configured. Please open extension settings.");
+			if (!url) return null; // Signal "not configured" without throwing
 		}
 
 		const res = await cinder.fetch(url, { headers });
@@ -148,6 +148,7 @@ __cinderExport = {
 
 	async search(query, page = 0) {
 		const rootXml = await this._fetchOPDS(null);
+		if (!rootXml) return []; // Server URL not configured — skip silently
 		const searchLink = rootXml.querySelector("link[rel='search'][type='application/atom+xml']");
 
 		let searchUrl;
