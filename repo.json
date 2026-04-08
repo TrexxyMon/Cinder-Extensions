@@ -1,0 +1,24 @@
+{
+	"name": "Cinder Test Extensions",
+	"author": "CinderDev",
+	"extensions": [
+		{
+			"id": "mangadex",
+			"name": "MangaDex",
+			"version": "1.0.0",
+			"description": "Search manga from MangaDex.org — free, community-run manga platform",
+			"contentType": "manga",
+			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/mangadex.js",
+			"minCinderVersion": "2.0.0"
+		},
+		{
+			"id": "opds-catalog",
+			"name": "OPDS Catalog",
+			"version": "1.0.0",
+			"description": "Connect to your OPDS-compatible server (Komga, Kavita, Calibre-web, COPS)",
+			"contentType": "books",
+			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/opds_catalog.js",
+			"minCinderVersion": "2.0.0"
+		}
+	]
+}
