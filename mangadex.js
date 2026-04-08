@@ -51,7 +51,7 @@ __cinderExport = {
 
 	async search(query, page = 0) {
 		const limit = 20;
-		const offset = page * limit;
+		const offset = (Math.max(1, page) - 1) * limit;
 
 		const encodedIncludesCover = encodeURIComponent("includes[]") + "=cover_art";
 		const encodedIncludesAuthor = encodeURIComponent("includes[]") + "=author";
