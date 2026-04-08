@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.2",
+	version: "1.0.3",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "manga",
@@ -132,7 +132,8 @@ __cinderExport = {
 			});
 		}
 
-		return chapters;
+		// Reverse so Issue #1 is at the top
+		return chapters.reverse();
 	},
 
 	// ── Pages (Images) ───────────────────────────────
