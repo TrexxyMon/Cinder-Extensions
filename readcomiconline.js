@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.0",
+	version: "1.0.1",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "manga",
@@ -39,30 +39,32 @@ __cinderExport = {
 
 		if (res.status !== 200) return [];
 
-		const doc = cinder.parseHTML(res.data);
 		const items = [];
-		const rows = doc.querySelectorAll(".item");
+		const seen = {};
 
-		for (const row of rows) {
-			const linkEl = row.querySelector("a");
-			const imgEl = row.querySelector("img");
+		// The HTML structure is:
+		//   <div class="section group list">
+		//     <div class="col cover"><a href="/Comic/SLUG"><img title="TITLE" src="/Uploads/..." /></a></div>
+		//     <div class="col info"><p><a href="/Comic/SLUG">TITLE</a></p></div>
+		//   </div>
+		//
+		// We match each listing block by finding <img> tags inside cover links
+		const blockRegex = /<a\s+href="\/Comic\/([^"]+)"[^>]*>\s*<img\s+title="([^"]*)"[^>]*src="([^"]*)"[^>]*>/g;
+		let match;
 
-			if (!linkEl) continue;
+		while ((match = blockRegex.exec(res.data)) !== null) {
+			const slug = match[1];
+			const title = match[2] || slug.replace(/-/g, " ");
+			const coverPath = match[3];
 
-			const href = linkEl.attr("href") || "";
-			const title = linkEl.attr("title") || linkEl.text().trim();
-			const slug = href.replace("/Comic/", "").replace(/\/$/, "");
-
-			if (!slug || !title) continue;
+			if (seen[slug]) continue;
+			seen[slug] = true;
 
 			let cover = "";
-			if (imgEl) {
-				const src = imgEl.attr("src") || "";
-				if (src.startsWith("/")) {
-					cover = this._baseUrl + src;
-				} else if (src.startsWith("http")) {
-					cover = src;
-				}
+			if (coverPath.startsWith("/")) {
+				cover = this._baseUrl + coverPath;
+			} else if (coverPath.startsWith("http")) {
+				cover = coverPath;
 			}
 
 			items.push({
@@ -70,44 +72,10 @@ __cinderExport = {
 				title: title,
 				author: "Unknown",
 				cover: cover,
-				url: this._baseUrl + href,
+				url: `${this._baseUrl}/Comic/${slug}`,
 				format: "comics",
 				extra: { slug: slug },
 			});
-		}
-
-		// Fallback: regex-based parsing if DOM parsing yields nothing
-		if (items.length === 0) {
-			const comicLinks = [];
-			const linkRegex = /href="\/Comic\/([^"]+)"[^>]*title="([^"]*)"[^>]*/g;
-			let match;
-			while ((match = linkRegex.exec(res.data)) !== null) {
-				const slug = match[1];
-				const title = match[2] || slug.replace(/-/g, " ");
-				if (comicLinks.some(c => c.slug === slug)) continue;
-				comicLinks.push({ slug, title });
-			}
-
-			// Find covers
-			const coverMap = {};
-			const coverRegex = /src="(\/Uploads[^"]+)"/g;
-			let coverMatch;
-			while ((coverMatch = coverRegex.exec(res.data)) !== null) {
-				coverMap[Object.keys(coverMap).length] = this._baseUrl + coverMatch[1];
-			}
-
-			for (let i = 0; i < comicLinks.length; i++) {
-				const c = comicLinks[i];
-				items.push({
-					id: c.slug,
-					title: c.title,
-					author: "Unknown",
-					cover: coverMap[i] || "",
-					url: `${this._baseUrl}/Comic/${c.slug}`,
-					format: "comics",
-					extra: { slug: c.slug },
-				});
-			}
 		}
 
 		return items;
