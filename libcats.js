@@ -2,11 +2,13 @@
 //
 // Searches en.booksee.org (mirrors: en.libcats.org) for ebooks
 // and resolves direct download links from book detail pages.
+//
+// Uses fetchBrowser (WebView) to bypass Cloudflare protection.
 
 __cinderExport = {
 	id: "libcats",
 	name: "LibCats",
-	version: "1.0.1",
+	version: "1.0.2",
 	icon: "https://en.booksee.org/favicon-32x32.png",
 	description: "Search and download ebooks from LibCats / Booksee (2.4M+ books)",
 	contentType: "books",
@@ -29,21 +31,21 @@ __cinderExport = {
 		var baseUrl = self._getBaseUrl();
 		var url = baseUrl + "/s/?q=" + encodeURIComponent(query) + "&t=0";
 
-		return cinder.fetch(url, {
-			headers: {
-				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-				"Accept": "text/html",
-				"Accept-Language": "en-US,en;q=0.9"
-			},
-			timeout: 15000
-		}).then(function(res) {
-			if (res.status !== 200) {
-				cinder.warn("[LibCats] Search failed with status: " + res.status);
+		// Use fetchBrowser (WebView) to bypass Cloudflare protection
+		return cinder.fetchBrowser(url).then(function(res) {
+			if (!res.data || res.data.length < 200) {
+				cinder.warn("[LibCats] Empty or blocked response, length: " + (res.data ? res.data.length : 0));
 				return [];
 			}
 
 			var doc = cinder.parseHTML(res.data);
 			var items = doc.querySelectorAll(".resItemBox");
+
+			if (items.length === 0) {
+				cinder.warn("[LibCats] No .resItemBox items found in HTML (len=" + res.data.length + ")");
+				return [];
+			}
+
 			var results = [];
 
 			for (var i = 0; i < items.length; i++) {
@@ -92,25 +94,21 @@ __cinderExport = {
 				});
 			}
 
+			cinder.log("[LibCats] Found " + results.length + " results");
 			return results;
 		});
 	},
 
 	resolve: function(item) {
-		return cinder.fetch(item.url, {
-			headers: {
-				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-				"Accept": "text/html",
-				"Accept-Language": "en-US,en;q=0.9"
-			},
-			timeout: 15000
-		}).then(function(res) {
-			if (res.status !== 200) {
-				throw new Error("Failed to load book page (status " + res.status + ")");
+		// Use fetchBrowser for the detail page too (Cloudflare)
+		return cinder.fetchBrowser(item.url).then(function(res) {
+			if (!res.data || res.data.length < 200) {
+				throw new Error("Failed to load book page (empty response)");
 			}
 
 			var doc = cinder.parseHTML(res.data);
 
+			// Download link: <a class="button active" href="//booksee.org/dl/1032894/789940">
 			var dlButton = doc.querySelector("a.active[href*='/dl/']");
 			if (!dlButton) {
 				dlButton = doc.querySelector("a[href*='/dl/']");
@@ -121,15 +119,19 @@ __cinderExport = {
 
 			var dlHref = dlButton.attr("href") || "";
 			if (dlHref.indexOf("//") === 0) dlHref = "https:" + dlHref;
-			if (dlHref.indexOf("http") !== 0) dlHref = "https://libcats.org" + dlHref;
+			if (dlHref.indexOf("http") !== 0) dlHref = "https://booksee.org" + dlHref;
 
+			// Detect format from text near download button: "(epub, 3.77 Mb)"
 			var format = "epub";
-			var detailsEl = doc.querySelector("#book_details_rc");
-			if (detailsEl) {
-				var fullText = detailsEl.text();
-				var fmtMatch = fullText.match(/\((\w+),\s*[\d.,]+\s*(?:Kb|Mb|Gb)\)/i);
-				if (fmtMatch) {
-					format = fmtMatch[1].toLowerCase();
+			var fullText = res.data;
+			var fmtMatch = fullText.match(/Download\s*<\/a><\/b>\s*\((\w+),/i);
+			if (fmtMatch) {
+				format = fmtMatch[1].toLowerCase();
+			} else {
+				// fallback: look for (format, size) pattern anywhere in details
+				var altMatch = fullText.match(/\((\w+),\s*[\d.,]+\s*(?:Kb|Mb|Gb)\)/i);
+				if (altMatch) {
+					format = altMatch[1].toLowerCase();
 				}
 			}
 
