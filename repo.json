@@ -28,6 +28,15 @@
 			"contentType": "manga",
 			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/readcomiconline.js",
 			"minCinderVersion": "2.0.0"
+		},
+		{
+			"id": "libcats",
+			"name": "LibCats",
+			"version": "1.0.0",
+			"description": "Search and download ebooks from LibCats / Booksee (2.4M+ books)",
+			"contentType": "books",
+			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/libcats.js",
+			"minCinderVersion": "2.0.0"
 		}
 	]
 }
