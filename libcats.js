@@ -7,39 +7,39 @@
 // Detail:  https://en.booksee.org/book/{id}
 // Download: https://libcats.org/dl/{id}/{hash}
 
-class LibCatsSource {
-	id = "libcats";
-	name = "LibCats";
-	version = "1.0.0";
-	icon = "📚";
-	description = "Search and download ebooks from LibCats / Booksee (2.4M+ books)";
+__cinderExport = {
+	id: "libcats",
+	name: "LibCats",
+	version: "1.0.0",
+	icon: "📚",
+	description: "Search and download ebooks from LibCats / Booksee (2.4M+ books)",
+	contentType: "books",
 
-	contentType = "books";
-
-	capabilities = {
+	capabilities: {
 		search: true,
 		discover: false,
 		download: false,
 		resolve: true,
 		manga: false,
-	};
+	},
 
-	// Base URL — user can override via settings
-	_getBaseUrl() {
+	_getBaseUrl: function () {
 		var custom = cinder.store.get("base_url");
 		return custom || "https://en.booksee.org";
-	}
+	},
+
+	_headers: {
+		"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+		"Accept": "text/html",
+		"Accept-Language": "en-US,en;q=0.9",
+	},
 
 	async search(query, page) {
 		var baseUrl = this._getBaseUrl();
 		var url = baseUrl + "/s/?q=" + encodeURIComponent(query) + "&t=0";
 
 		var res = await cinder.fetch(url, {
-			headers: {
-				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-				"Accept": "text/html",
-				"Accept-Language": "en-US,en;q=0.9",
-			},
+			headers: this._headers,
 			timeout: 15000,
 		});
 
@@ -56,18 +56,18 @@ class LibCatsSource {
 			var item = items[i];
 
 			// Extract book link and ID
-			var linkEl = item.querySelector('a[href*="book/"]');
+			var linkEl = item.querySelector("a[href*='book/']");
 			if (!linkEl) continue;
 			var href = linkEl.attr("href") || "";
 			var bookId = href.replace(/.*book\//, "").replace(/[^0-9]/g, "");
 			if (!bookId) continue;
 
 			// Title
-			var titleEl = item.querySelector('h3[itemprop="name"]');
+			var titleEl = item.querySelector("h3");
 			var title = titleEl ? titleEl.text().trim() : "Unknown";
 
-			// Author
-			var authorEls = item.querySelectorAll('a[itemprop="author"]');
+			// Author(s)
+			var authorEls = item.querySelectorAll("a[itemprop='author']");
 			var authors = [];
 			for (var a = 0; a < authorEls.length; a++) {
 				var authorText = authorEls[a].text().trim();
@@ -78,8 +78,7 @@ class LibCatsSource {
 			// Cover
 			var imgEl = item.querySelector("img");
 			var cover = imgEl ? imgEl.attr("src") : "";
-			if (cover && cover.startsWith("//")) cover = "https:" + cover;
-			// Skip blank covers
+			if (cover && cover.indexOf("//") === 0) cover = "https:" + cover;
 			if (cover && cover.indexOf("blank_80") !== -1) cover = "";
 
 			// Size
@@ -87,7 +86,6 @@ class LibCatsSource {
 			var actionsEl = item.querySelector(".actionsHolder");
 			if (actionsEl) {
 				var rawText = actionsEl.text();
-				// Extract size like "3.77 Mb" or "247 Kb"
 				var sizeMatch = rawText.match(/([\d.,]+)\s*(Kb|Mb|Gb)/i);
 				if (sizeMatch) {
 					sizeText = sizeMatch[1] + " " + sizeMatch[2];
@@ -106,15 +104,11 @@ class LibCatsSource {
 		}
 
 		return results;
-	}
+	},
 
 	async resolve(item) {
 		var res = await cinder.fetch(item.url, {
-			headers: {
-				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-				"Accept": "text/html",
-				"Accept-Language": "en-US,en;q=0.9",
-			},
+			headers: this._headers,
 			timeout: 15000,
 		});
 
@@ -125,47 +119,41 @@ class LibCatsSource {
 		var doc = cinder.parseHTML(res.data);
 
 		// Find the main download button: <a class="button active" href="//libcats.org/dl/1032894/789940">
-		var dlButton = doc.querySelector('a.button.active[href*="/dl/"]');
+		var dlButton = doc.querySelector("a.active[href*='/dl/']");
 		if (!dlButton) {
-			// Fallback: try any link containing /dl/
-			dlButton = doc.querySelector('a[href*="/dl/"]');
+			dlButton = doc.querySelector("a[href*='/dl/']");
 		}
-
 		if (!dlButton) {
-			throw new Error("No download link found on the book page. The book may have been removed.");
+			throw new Error("No download link found on the book page.");
 		}
 
 		var dlHref = dlButton.attr("href") || "";
-		if (dlHref.startsWith("//")) dlHref = "https:" + dlHref;
-		if (!dlHref.startsWith("http")) dlHref = "https://libcats.org" + dlHref;
+		if (dlHref.indexOf("//") === 0) dlHref = "https:" + dlHref;
+		if (dlHref.indexOf("http") !== 0) dlHref = "https://libcats.org" + dlHref;
 
-		// Extract format and size from the text next to the button
-		// e.g., "(epub, 3.77 Mb)"
-		var buttonParent = dlButton.text() || "";
-		var format = "epub"; // default
-		var parentText = doc.querySelector("#book_details_rc");
-		if (parentText) {
-			var fullText = parentText.text();
+		// Detect format from the text near the download button, e.g. "(epub, 3.77 Mb)"
+		var format = "epub";
+		var detailsEl = doc.querySelector("#book_details_rc");
+		if (detailsEl) {
+			var fullText = detailsEl.text();
 			var fmtMatch = fullText.match(/\((\w+),\s*[\d.,]+\s*(?:Kb|Mb|Gb)\)/i);
 			if (fmtMatch) {
 				format = fmtMatch[1].toLowerCase();
 			}
 		}
 
-		var fileName = item.title + "." + format;
-
 		return {
 			url: dlHref,
-			fileName: fileName,
+			fileName: item.title + "." + format,
 			headers: {
 				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
 				"Referer": item.url,
 			},
 			fileSize: null,
 		};
-	}
+	},
 
-	getSettings() {
+	getSettings: function () {
 		return [
 			{
 				id: "base_url",
@@ -175,7 +163,5 @@ class LibCatsSource {
 				placeholder: "https://en.booksee.org",
 			},
 		];
-	}
-}
-
-__cinderExport = new LibCatsSource();
+	},
+};
