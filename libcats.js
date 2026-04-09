@@ -2,11 +2,14 @@
 //
 // Searches en.booksee.org for ebooks and resolves direct
 // download links from book detail pages.
+//
+// Uses fetchBrowser (WebView) to bypass Cloudflare protection
+// since booksee.org/libcats.org return 403 to regular HTTP clients.
 
 __cinderExport = {
 	id: "libcats",
 	name: "LibCats",
-	version: "1.0.3",
+	version: "1.0.4",
 	icon: "https://en.booksee.org/favicon-32x32.png",
 	description: "Search and download ebooks from LibCats / Booksee (2.4M+ books)",
 	contentType: "books",
@@ -19,7 +22,7 @@ __cinderExport = {
 		manga: false,
 	},
 
-	_baseUrl: "https://en.booksee.org",
+	_defaultUrl: "https://en.booksee.org",
 
 	_headers: {
 		"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
@@ -29,22 +32,20 @@ __cinderExport = {
 	// ── Search ───────────────────────────────────────
 
 	async search(query, page) {
-		// Check for user-configured mirror URL
+		// Check for user-configured mirror URL (store.get is async!)
 		var customUrl = await cinder.store.get("base_url");
-		var baseUrl = customUrl || this._baseUrl;
+		var baseUrl = (customUrl && customUrl.length > 5) ? customUrl : this._defaultUrl;
 		var url = baseUrl + "/s/?q=" + encodeURIComponent(query) + "&t=0";
 
 		cinder.log("[LibCats] Searching: " + url);
 
-		var res = await cinder.fetch(url, {
-			headers: this._headers,
-			timeout: 15000,
-		});
+		// Cloudflare blocks regular HTTP — must use WebView
+		var res = await cinder.fetchBrowser(url);
 
-		cinder.log("[LibCats] Response status: " + res.status + ", length: " + (res.data ? res.data.length : 0));
+		cinder.log("[LibCats] Response status: " + res.status + ", data length: " + (res.data ? res.data.length : 0));
 
-		if (res.status !== 200 || !res.data) {
-			cinder.warn("[LibCats] Search failed, status: " + res.status);
+		if (!res.data || res.data.length < 500) {
+			cinder.warn("[LibCats] Response too short or empty, likely blocked");
 			return [];
 		}
 
@@ -52,14 +53,18 @@ __cinderExport = {
 		var doc = cinder.parseHTML(res.data);
 		var items = doc.querySelectorAll(".resItemBox");
 
-		cinder.log("[LibCats] Found " + items.length + " .resItemBox items");
+		cinder.log("[LibCats] DOM found " + items.length + " .resItemBox items");
 
-		// If DOM finds nothing, try regex fallback (in case parser misses)
-		if (items.length === 0) {
-			cinder.warn("[LibCats] No items via DOM, trying regex fallback");
-			return this._regexSearch(res.data, baseUrl);
+		if (items.length > 0) {
+			return this._parseDomResults(items, baseUrl);
 		}
 
+		// Fallback: regex parsing
+		cinder.log("[LibCats] Trying regex fallback...");
+		return this._regexSearch(res.data, baseUrl);
+	},
+
+	_parseDomResults(items, baseUrl) {
 		var results = [];
 
 		for (var i = 0; i < items.length; i++) {
@@ -108,14 +113,15 @@ __cinderExport = {
 			});
 		}
 
-		cinder.log("[LibCats] Returning " + results.length + " results");
+		cinder.log("[LibCats] DOM parsed " + results.length + " results");
 		return results;
 	},
 
-	// Regex fallback parser — works even if CSS-select fails
+	// Regex fallback parser
 	_regexSearch(html, baseUrl) {
 		var results = [];
-		var blockRegex = /<a\s+href="[^"]*book\/(\d+)"[^>]*>\s*<h3[^>]*>([^<]*)<\/h3>/g;
+		// Match: <a href="book/1032894" ><h3 class="color1" itemprop="name">The Way of Kings</h3></a>
+		var blockRegex = /href="[^"]*book\/(\d+)"[^>]*>\s*<h3[^>]*>([^<]+)<\/h3>/g;
 		var match;
 
 		while ((match = blockRegex.exec(html)) !== null) {
@@ -140,27 +146,27 @@ __cinderExport = {
 	// ── Resolve ──────────────────────────────────────
 
 	async resolve(item) {
-		var customUrl = await cinder.store.get("base_url");
-		var baseUrl = customUrl || this._baseUrl;
+		cinder.log("[LibCats] Resolving: " + item.url);
 
-		var res = await cinder.fetch(item.url, {
-			headers: this._headers,
-			timeout: 15000,
-		});
+		// Use WebView to bypass Cloudflare on detail page too
+		var res = await cinder.fetchBrowser(item.url);
 
-		if (res.status !== 200 || !res.data) {
-			throw new Error("Failed to load book page (status " + res.status + ")");
+		if (!res.data || res.data.length < 500) {
+			throw new Error("Failed to load book page (empty/blocked response)");
 		}
 
 		// Download link: <a class="button active" href="//booksee.org/dl/1032894/789940">
-		var dlMatch = res.data.match(/href="([^"]*\/dl\/[^"]*)"/);
+		var dlMatch = res.data.match(/href="([^"]*\/dl\/\d+\/[^"]*)"/);
 		if (!dlMatch) {
+			cinder.warn("[LibCats] No /dl/ link found in response");
 			throw new Error("No download link found on the book page.");
 		}
 
 		var dlHref = dlMatch[1];
 		if (dlHref.indexOf("//") === 0) dlHref = "https:" + dlHref;
 		if (dlHref.indexOf("http") !== 0) dlHref = "https://booksee.org" + dlHref;
+
+		cinder.log("[LibCats] Download URL: " + dlHref);
 
 		// Detect format: "(epub, 3.77 Mb)"
 		var format = "epub";
