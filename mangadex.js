@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "mangadex",
 	name: "MangaDex",
-	version: "1.0.2",
+	version: "1.0.6",
 	icon: "📖",
 	description: "Search manga from MangaDex.org — free, community-run manga platform",
 	contentType: "manga",
@@ -259,7 +259,7 @@ __cinderExport = {
 
 	// ── Pages ─────────────────────────────────────────
 
-	async getPages(chapterId) {
+	async *getPages(chapterId) {
 		const url = `https://api.mangadex.org/at-home/server/${chapterId}`;
 
 		const res = await cinder.fetch(url, {
@@ -276,9 +276,14 @@ __cinderExport = {
 		const hash = data.chapter?.hash;
 		const pageFiles = data.chapter?.data || [];
 
-		return pageFiles.map((fileName) => ({
-			url: `${baseUrl}/data/${hash}/${fileName}`,
-		}));
+		// Yield in chunks to prevent UI thread lockups and invoke instant Dispatching
+		const CHUNK_SIZE = 5;
+		for (let i = 0; i < pageFiles.length; i += CHUNK_SIZE) {
+			const chunk = pageFiles.slice(i, i + CHUNK_SIZE);
+			yield chunk.map((fileName) => ({
+				url: `${baseUrl}/data/${hash}/${fileName}`,
+			}));
+		}
 	},
 
 	// ── Settings ──────────────────────────────────────
