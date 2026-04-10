@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.4",
+	version: "1.0.3",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "manga",
@@ -138,7 +138,7 @@ __cinderExport = {
 
 	// ── Pages (Images) ───────────────────────────────
 
-	async *getPages(chapterId) {
+	async getPages(chapterId) {
 		// readType=1 = all pages on one page
 		const url = `${this._baseUrl}${chapterId}${chapterId.includes("?") ? "&" : "?"}readType=1`;
 
@@ -146,15 +146,15 @@ __cinderExport = {
 		// We use fetchBrowser (WebView) which runs the JS, then extract once images load.
 		const res = await cinder.fetchBrowser(url);
 
-		if (!res.data) return;
+		if (!res.data) return [];
+
+		const pages = [];
 
 		// After WebView JS runs, images should have their src populated.
 		// Find all <img> tags with non-empty src that look like comic page images.
 		const imgRegex = /<img[^>]*src="(https?:\/\/[^"]+)"[^>]*>/gi;
 		let match;
 		const seen = {};
-		
-		let currentChunk = [];
 
 		while ((match = imgRegex.exec(res.data)) !== null) {
 			const src = match[1];
@@ -167,17 +167,10 @@ __cinderExport = {
 				src.includes(".gif") || src.includes("dreemy") ||
 				src.includes("ads") || src.includes("banner")) continue;
 			seen[src] = true;
-			currentChunk.push({ url: src });
-			
-			if (currentChunk.length >= 3) {
-				yield currentChunk;
-				currentChunk = [];
-			}
+			pages.push({ url: src });
 		}
-		
-		if (currentChunk.length > 0) {
-			yield currentChunk;
-		}
+
+		return pages;
 	},
 
 	// ── Manga Details ────────────────────────────────

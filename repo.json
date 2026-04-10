@@ -5,7 +5,7 @@
 		{
 			"id": "mangadex",
 			"name": "MangaDex",
-			"version": "1.0.6",
+			"version": "1.0.7",
 			"description": "Search manga from MangaDex.org — free, community-run manga platform",
 			"contentType": "manga",
 			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/mangadex.js",
@@ -23,7 +23,7 @@
 		{
 			"id": "readcomiconline",
 			"name": "ReadComicOnline",
-			"version": "1.0.4",
+			"version": "1.0.5",
 			"description": "Read Marvel, DC, Image and more comics — the largest western comics library",
 			"contentType": "manga",
 			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/readcomiconline.js",
