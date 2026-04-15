@@ -28,6 +28,15 @@
 			"contentType": "manga",
 			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/readcomiconline.js",
 			"minCinderVersion": "2.0.0"
+		},
+		{
+			"id": "annas-archive-slow",
+			"name": "Anna's Archive (Slow)",
+			"version": "1.0.0",
+			"description": "Free slow downloads from Anna's Archive. No account or API needed.",
+			"contentType": "books",
+			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/annas_archive.js",
+			"minCinderVersion": "2.0.0"
 		}
 	]
 }
