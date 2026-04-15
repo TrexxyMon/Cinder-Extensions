@@ -20,10 +20,11 @@ __cinderExport = {
 
 	// Declare what this extension can do
 	capabilities: {
-		search: true,              // Can search for content
+		search: true,              // Can search for content (appears in Search tab)
 		discover: false,           // Has browse/discover sections
 		download: true,            // Has direct download URLs in search results
 		resolve: true,             // Can resolve a search result to a download URL
+		searchDownloads: false,    // Appears in "Search Downloads" on book detail pages
 		manga: false,              // Has getChapters() and getPages() for manga reading
 	},
 
