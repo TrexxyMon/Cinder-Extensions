@@ -12,15 +12,6 @@
 			"minCinderVersion": "2.0.0"
 		},
 		{
-			"id": "opds-catalog",
-			"name": "OPDS Catalog",
-			"version": "1.0.3",
-			"description": "Connect to your OPDS-compatible server (Komga, Kavita, Calibre-web, COPS)",
-			"contentType": "books",
-			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/opds_catalog.js",
-			"minCinderVersion": "2.0.0"
-		},
-		{
 			"id": "readcomiconline",
 			"name": "ReadComicOnline",
 			"version": "1.0.5",
