@@ -1,0 +1,56 @@
+{
+	"id": "zlibrary-scraper",
+	"name": "Z-Library (Direct)",
+	"version": "1.0.0",
+	"description": "Scrapes Z-Library directly with domain fallbacks and IP Spoofing to avoid fast-download limits.",
+	"icon": "book",
+	"type": "directDownload",
+	"request": {
+		"method": "GET",
+		"url": "https://zlib.li/s/{TITLE}%20{AUTHOR}?e=1",
+		"fallbackUrls": [
+			"https://z-lib.gs/s/{TITLE}%20{AUTHOR}?e=1",
+			"https://z-library.rs/s/{TITLE}%20{AUTHOR}?e=1",
+			"https://singlelogin.re/s/{TITLE}%20{AUTHOR}?e=1",
+			"https://singlelogin.rs/s/{TITLE}%20{AUTHOR}?e=1",
+			"https://1lib.sk/s/{TITLE}%20{AUTHOR}?e=1"
+		],
+		"headers": {
+			"X-Forwarded-For": "{RANDOM_IP}",
+			"X-Real-IP": "{RANDOM_IP}"
+		},
+		"timeout": 30000
+	},
+	"response": {
+		"type": "html",
+		"cloudflare": true,
+		"resultsSelector": "table.resItemTable, div.resItemBox",
+		"mapping": {
+			"title": "h3[itemprop='name'] a, h3[itemprop='name'] | text",
+			"author": "div.authors a, div.authors | text",
+			"format": ".bookProperty.property__file .property_value, .property_value | text",
+			"size": ".bookProperty.property__file .property_value, .property_value | text",
+			"url": "h3[itemprop='name'] a, a[href^='/book/'] | href"
+		}
+	},
+	"downloadResolve": {
+		"request": {
+			"method": "GET",
+			"url": "{DOWNLOAD_ID}",
+			"headers": {
+				"X-Forwarded-For": "203.0.113.195",
+				"X-Real-IP": "203.0.113.195"
+			},
+			"timeout": 30000
+		},
+		"response": {
+			"type": "html",
+			"cloudflare": true,
+			"resultsSelector": "a.addDownloadedBook, a.dlButton, a[href^='/dl/'], a.btn-primary",
+			"mapping": {
+				"url": ". | href"
+			}
+		},
+		"urlField": "url"
+	}
+}
