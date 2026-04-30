@@ -19,6 +19,15 @@
 			"contentType": "manga",
 			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/readcomiconline.js",
 			"minCinderVersion": "2.0.0"
+		},
+		{
+			"id": "weebcentral",
+			"name": "WeebCentral",
+			"version": "1.0.6",
+			"description": "Read manga, manhwa, and manhua from WeebCentral.com",
+			"contentType": "manga",
+			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/weebcentral.js",
+			"minCinderVersion": "2.0.0"
 		}
 	]
 }
