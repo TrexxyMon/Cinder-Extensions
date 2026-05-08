@@ -19,6 +19,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **OPDS Catalog** | Books | Connect to your OPDS-compatible server (Komga, Kavita, Calibre-web, COPS) |
 | **ReadComicsOnline** | Comics | Search, read, and download comics from ReadComicsOnline |
 | **WeebCentral** | Manga | Search, read, and download manga from WeebCentral (credit to Theoenogo for building this extension) |
+| **DownMagaz** | Magazines | Search, read, and download various magazines from downmagaz.net (Credit to Tonynks for building much of this extension) |
 ## How to Install
 
 1. Open Cinder → **Settings** → **Extensions**
