@@ -1,33 +1,42 @@
 {
-	"name": "Cinder Test Extensions",
-	"author": "CinderDev",
-	"extensions": [
-		{
-			"id": "mangadex",
-			"name": "MangaDex",
-			"version": "1.0.7",
-			"description": "Search manga from MangaDex.org — free, community-run manga platform",
-			"contentType": "manga",
-			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/mangadex.js",
-			"minCinderVersion": "2.0.0"
-		},
-		{
-			"id": "readcomiconline",
-			"name": "ReadComicOnline",
-			"version": "1.0.5",
-			"description": "Read Marvel, DC, Image and more comics — the largest western comics library",
-			"contentType": "manga",
-			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/readcomiconline.js",
-			"minCinderVersion": "2.0.0"
-		},
-		{
-			"id": "weebcentral",
-			"name": "WeebCentral",
-			"version": "1.0.6",
-			"description": "Read manga, manhwa, and manhua from WeebCentral.com",
-			"contentType": "manga",
-			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/weebcentral.js",
-			"minCinderVersion": "2.0.0"
-		}
-	]
+  "name": "Cinder Test Extensions",
+  "author": "CinderDev",
+  "extensions": [
+    {
+      "id": "mangadex",
+      "name": "MangaDex",
+      "version": "1.0.7",
+      "description": "Search manga from MangaDex.org — free, community-run manga platform",
+      "contentType": "manga",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/mangadex.js",
+      "minCinderVersion": "2.0.0"
+    },
+    {
+      "id": "readcomiconline",
+      "name": "ReadComicOnline",
+      "version": "1.0.5",
+      "description": "Read Marvel, DC, Image and more comics — the largest western comics library",
+      "contentType": "manga",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/readcomiconline.js",
+      "minCinderVersion": "2.0.0"
+    },
+    {
+      "id": "weebcentral",
+      "name": "WeebCentral",
+      "version": "1.0.6",
+      "description": "Read manga, manhwa, and manhua from WeebCentral.com",
+      "contentType": "manga",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/weebcentral.js",
+      "minCinderVersion": "2.0.0"
+    },
+    {
+      "id": "downmagaz",
+      "name": "DownMagaz",
+      "version": "4.0.10",
+      "description": "Search and browse DownMagaz on device, then resolve issue links for PDF download.",
+      "contentType": "books",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/downmagaz_device.js",
+      "minCinderVersion": "2.0.0"
+    }
+  ]
 }
