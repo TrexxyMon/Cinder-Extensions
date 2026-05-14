@@ -46,6 +46,15 @@
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/royalroad.js",
                            "minCinderVersion":  "2.0.0"
+                       },
+                       {
+                           "id":  "gocomics",
+                           "name":  "GoComics",
+                           "version":  "3.3.0",
+                           "description":  "Read 600+ daily comic strips via ComicsRSS - GoComics, Comics Kingdom, Wumo, Life on Earth, and more.",
+                           "contentType":  "manga",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/gocomics.js",
+                           "minCinderVersion":  "2.0.0"
                        }
                    ]
 }

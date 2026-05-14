@@ -20,6 +20,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **ReadComicsOnline** | Comics | Search, read, and download comics from ReadComicsOnline |
 | **WeebCentral** | Manga | Search, read, and download manga from WeebCentral (credit to Theoenogo for building this extension) |
 | **DownMagaz** | Magazines | Search, read, and download various magazines from downmagaz.net (Credit to Tonynks for building much of this extension) |
+| **GoComics** | Comics | Read daily comic strips from GoComics, Comics Kingdom, ComicsRSS, and more (Credit to Tonynks for the source extension) |
 ## How to Install
 
 1. Open Cinder → **Settings** → **Extensions**
