@@ -1,6 +1,6 @@
 // ─── ReadComicOnline Extension for Cinder ─────────────────────
 //
-// Connects to readcomiconline.li for western comic reading.
+// Connects to rcostation.xyz for western comic reading.
 // Search and chapter listing use regular fetch.
 // Page images require fetchBrowser (WebView) since they're JS-loaded.
 //
@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.5",
+	version: "1.0.6",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "manga",
@@ -23,7 +23,7 @@ __cinderExport = {
 		manga: true,
 	},
 
-	_baseUrl: "https://readcomiconline.li",
+	_baseUrl: "https://rcostation.xyz",
 
 	// ── Search ───────────────────────────────────────
 
