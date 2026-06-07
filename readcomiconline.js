@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.9",
+	version: "1.0.11",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "comics",
