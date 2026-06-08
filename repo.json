@@ -3,6 +3,24 @@
   "author": "CinderDev",
   "extensions": [
     {
+      "id": "atsumaru",
+      "name": "Atsumaru",
+      "version": "0.1.0-cinder",
+      "description": "Read manga, manhwa, manhua, and OEL from Atsumaru.",
+      "contentType": "manga",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/atsumaru.js",
+      "minCinderVersion": "2.0.0",
+      "contentTypes": [
+        "manga"
+      ],
+      "contentSubtypes": [
+        "manga",
+        "manhwa",
+        "manhua",
+        "oel"
+      ]
+    },
+    {
       "id": "mangadex",
       "name": "MangaDex",
       "version": "1.0.7",
