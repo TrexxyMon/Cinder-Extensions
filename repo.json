@@ -162,7 +162,7 @@
     {
       "id": "annas-archive-slow",
       "name": "Anna's Archive",
-      "version": "2.1.8",
+      "version": "2.1.9",
       "description": "Anna's Archive direct downloader powered entirely by your device, with no backend infrastructure.",
       "contentType": "books",
       "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/annas_archive.js",

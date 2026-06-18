@@ -6,7 +6,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.8",
+	version: "2.1.9",
 	icon: "📚",
 	description: "Anna's Archive direct downloader powered entirely by your device, with no backend infrastructure.",
 	contentType: "books",
@@ -192,6 +192,70 @@ __cinderExport = {
 			.trim();
 	},
 
+	_cleanHtmlText: function(value) {
+		return this._decodeHtml(String(value || "").replace(/<[^>]+>/g, " "))
+			.replace(/\s+/g, " ")
+			.trim();
+	},
+
+	_cleanResultTitle: function(value) {
+		return this._cleanHtmlText(value)
+			.replace(/\b(epub|pdf|mobi|azw3|cbz|cbr|fb2|djvu)\b/gi, "")
+			.replace(/\d+\.?\d*\s*[KMG]B/gi, "")
+			.replace(/\s+/g, " ")
+			.trim();
+	},
+
+	_extractResultFileMeta: function(rawBlock) {
+		var cleanText = this._cleanHtmlText(rawBlock);
+		var formatMatch = cleanText.match(/\b(epub|pdf|mobi|azw3|cbz|cbr|fb2|djvu)\b/i);
+		var sizeMatch = cleanText.match(/(\d+\.?\d*\s*[KMGi]i?B)/i);
+		return {
+			format: formatMatch ? formatMatch[1].toLowerCase() : "",
+			size: sizeMatch ? sizeMatch[1].replace(/\s+/g, "") : "",
+		};
+	},
+
+	_extractNearbyCover: function(html, anchorIndex) {
+		var start = Math.max(0, anchorIndex - 2200);
+		var before = html.substring(start, anchorIndex);
+		var matches = before.match(/<img[^>]+src="([^"]+)"/gi);
+		if (!matches || matches.length === 0) return "";
+		var last = matches[matches.length - 1].match(/src="([^"]+)"/i);
+		return last && last[1] ? this._decodeHtml(last[1]) : "";
+	},
+
+	_parseSearchResultsFromHtml: function(html) {
+		var results = [];
+		var seen = {};
+		var titleLinkRe = /<a href="\/md5\/([a-f0-9]+)"[^>]*font-semibold[^>]*>([\s\S]*?)<\/a>/gi;
+		var match;
+		while ((match = titleLinkRe.exec(html)) && results.length < 100) {
+			var md5 = match[1];
+			if (!md5 || seen[md5]) continue;
+			seen[md5] = true;
+
+			var rawBlock = html.substring(match.index, Math.min(html.length, match.index + 4000));
+			var title = this._cleanResultTitle(match[2]);
+			if (!title) continue;
+
+			var meta = this._extractResultFileMeta(rawBlock);
+			if (meta.format && this._SUPPORTED_FORMATS.indexOf(meta.format) === -1) continue;
+
+			results.push({
+				id: md5,
+				title: title,
+				author: this._extractResultAuthor(rawBlock),
+				cover: this._extractNearbyCover(html, match.index),
+				format: meta.format || "epub",
+				size: meta.size,
+				url: md5,
+				source: "Anna's Archive",
+			});
+		}
+		return results;
+	},
+
 	// ── Search ──
 
 	search: async function(query, page) {
@@ -203,6 +267,12 @@ __cinderExport = {
 			+ "&page=" + (page + 1) + "&sort=&lang=en";
 
 		var resp = await this._fetchWithFallback(searchPath);
+		var parsedResults = this._parseSearchResultsFromHtml(resp.data);
+		if (parsedResults.length > 0) {
+			cinder.log("[AA] Parsed " + parsedResults.length + " results from result cards (epub/pdf only)");
+			return parsedResults;
+		}
+
 		var doc = cinder.parseHTML(resp.data);
 		var results = [];
 
@@ -248,10 +318,7 @@ __cinderExport = {
 				}
 
 				if (lines.length > 0) title = lines[0];
-				title = title.replace(/\b(epub|pdf|mobi|azw3|cbz|cbr|fb2|djvu)\b/gi, "")
-					.replace(/\d+\.?\d*\s*[KMG]B/gi, "")
-					.replace(/\b[a-z]{2}\b/g, "")
-					.replace(/\s+/g, " ").trim();
+				title = this._cleanResultTitle(title);
 				if (!author && lines.length > 1) author = lines[1];
 
 				var coverImg = link.querySelector("img");
