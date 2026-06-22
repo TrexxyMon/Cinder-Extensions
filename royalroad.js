@@ -1,11 +1,11 @@
 ﻿__cinderExport = {
     id: "royalroad",
     name: "Royal Road",
-    version: "1.0.1",
+    version: "1.0.2",
     icon: "RR",
     description: "Search chaptered fiction from Royal Road and package it into EPUB for reading in Cinder.",
     contentType: "books",
-    contentTypes: ["ebook"],
+    contentTypes: ["webnovel", "ebook"],
     contentSubtypes: ["webFiction", "lightNovel"],
 
     capabilities: {

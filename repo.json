@@ -99,12 +99,13 @@
     {
       "id": "royalroad",
       "name": "Royal Road",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Search chaptered fiction from Royal Road and package it into EPUB for reading in Cinder.",
       "contentType": "books",
       "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/royalroad.js",
       "minCinderVersion": "2.0.0",
       "contentTypes": [
+        "webnovel",
         "ebook"
       ],
       "contentSubtypes": [
