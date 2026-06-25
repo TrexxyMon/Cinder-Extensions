@@ -114,6 +114,26 @@
       ]
     },
     {
+      "id": "readnovel",
+      "name": "ReadNovelEU",
+      "version": "0.1.0-cinder",
+      "description": "Search and read chaptered web novels from ReadNovelEU, the current wuxiaworld.eu destination.",
+      "contentType": "books",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/readnovel.js",
+      "minCinderVersion": "2.0.0",
+      "contentTypes": [
+        "webnovel",
+        "ebook"
+      ],
+      "contentSubtypes": [
+        "webFiction",
+        "lightNovel",
+        "wuxia",
+        "xianxia",
+        "xuanhuan"
+      ]
+    },
+    {
       "id": "gocomics",
       "name": "GoComics",
       "version": "3.3.1",
