@@ -24,6 +24,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **LibGen** | Books | Direct download-source extension with on-device link resolution. |
 | **OceanofPDF** | Books | Download-source extension with separate EPUB/PDF results and POST form downloads. |
 | **ReadNovelEU** | Books | Search and read chaptered web novels from the current WuxiaWorld destination. |
+| **WebNovel** | Books | Search and read public chaptered web novels from WebNovel; locked chapters are not bypassed. |
 | **ReadComicsOnline** | Comics | Search, read, and download comics from ReadComicsOnline. |
 | **WeebCentral** | Manga | Search, read, and download manga from WeebCentral. Credit to Theoenogo for building this extension. |
 | **DownMagaz** | Magazines | Search, read, and download magazines from downmagaz.net. Credit to Tonynks for building much of this extension. |
