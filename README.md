@@ -22,6 +22,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **OPDS Catalog** | Books | Connect to your OPDS-compatible server, including Komga, Kavita, Calibre-web, and COPS. |
 | **Anna's Archive** | Books | Direct downloader powered entirely by your device; no backend infrastructure. |
 | **LibGen** | Books | Direct download-source extension with on-device link resolution. |
+| **ElScione Server** | Books/Manga/Webnovels | Search an h5ai ebook and manga server for EPUB, PDF, CBZ, and CBR files. |
 | **OceanofPDF** | Books | Download-source extension with separate EPUB/PDF results and POST form downloads. |
 | **ReadNovelEU** | Books | Search and read chaptered web novels from the current WuxiaWorld destination. |
 | **WebNovel** | Books | Search and read public chaptered web novels from WebNovel; locked chapters are not bypassed. |
