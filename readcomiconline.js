@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.11",
+	version: "1.0.12",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "comics",
@@ -157,15 +157,54 @@ __cinderExport = {
 		const seen = {};
 
 		function addPage(src) {
-			if (!src || seen[src]) return;
-			if (src.includes("/Content/") || src.includes("/Uploads/") ||
-				src.includes("icon") || src.includes("logo") ||
-				src.includes("avatar") || src.includes("loading") ||
-				src.includes("google") || src.includes("analytics") ||
-				src.includes(".gif") || src.includes("dreemy") ||
-				src.includes("ads") || src.includes("banner")) return;
+			src = (src || "").trim();
+			if (!src || seen[src] || !isValidPageImage(src)) return;
 			seen[src] = true;
 			pages.push({ url: src });
+		}
+
+		function isValidPageImage(src) {
+			if (!/^https?:\/\//i.test(src)) return false;
+
+			const hostMatch = src.match(/^https?:\/\/([^/?#]+)/i);
+			const host = hostMatch ? hostMatch[1].toLowerCase() : "";
+			const path = src.split("?")[0].toLowerCase();
+
+			const isPageHost =
+				/(^|\.)bp\.blogspot\.com$/.test(host) ||
+				/(^|\.)googleusercontent\.com$/.test(host);
+			if (!isPageHost) return false;
+
+			if (path.includes("/content/") || path.includes("/uploads/")) return false;
+			if (/(?:icon|logo|avatar|loading|analytics|dreemy|ads|banner|doubleclick|tracking|pixel)/i.test(path)) return false;
+			if (/\.(?:gif|svg)(?:[?#]|$)/i.test(src)) return false;
+
+			return true;
+		}
+
+		function escapeRegExp(value) {
+			return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		}
+
+		function getETokens(html) {
+			const tokens = ["kQ__Wgp3Ez_"];
+			const tokenRegex = /pth\s*=\s*pth\.replace\(\/([^/]+)\/g,\s*['"]e['"]\);/g;
+			let tokenMatch;
+
+			while ((tokenMatch = tokenRegex.exec(html)) !== null) {
+				const token = tokenMatch[1];
+				if (token && !tokens.includes(token)) tokens.push(token);
+			}
+
+			return tokens;
+		}
+
+		function replaceETokens(value, tokens) {
+			let current = value;
+			for (const token of tokens) {
+				current = current.replace(new RegExp(escapeRegExp(token), "g"), "e");
+			}
+			return current;
 		}
 
 		function step1(value) {
@@ -184,9 +223,8 @@ __cinderExport = {
 			}
 		}
 
-		function decodeRcoPath(value) {
-			let current = value
-				.replace(/kQ__Wgp3Ez_/g, "e")
+		function decodeRcoPath(value, eTokens) {
+			let current = replaceETokens(value, eTokens)
 				.replace(/b/g, "pw_.g28x")
 				.replace(/h/g, "d2pr.x_27")
 				.replace(/pw_.g28x/g, "b")
@@ -211,16 +249,25 @@ __cinderExport = {
 		}
 
 		// Current RCO pages embed obfuscated image paths in pth assignments.
+		const eTokens = getETokens(res.data);
 		const pthRegex = /pth\s*=\s*'([^']+)'[\s\S]*?\.push\(pth\);/g;
 		let match;
 		while ((match = pthRegex.exec(res.data)) !== null) {
-			addPage(decodeRcoPath(match[1]));
+			addPage(decodeRcoPath(match[1], eTokens));
 		}
 
-		// Fallback for older pages or if the host switches back to populated img src values.
-		const imgRegex = /<img[^>]*src="(https?:\/\/[^\"]+)"[^>]*>/gi;
-		while ((match = imgRegex.exec(res.data)) !== null) {
-			addPage(match[1]);
+		// Fallback for older pages only. Do not mix this into decoded pth pages;
+		// page HTML can contain cover, tracking, and site images too.
+		if (pages.length === 0) {
+			const pushedUrlRegex = /\.push\(['"](https?:\/\/[^'"]+)['"]\);/g;
+			while ((match = pushedUrlRegex.exec(res.data)) !== null) {
+				addPage(replaceETokens(match[1], eTokens));
+			}
+
+			const imgRegex = /<img[^>]*src="(https?:\/\/[^\"]+)"[^>]*>/gi;
+			while ((match = imgRegex.exec(res.data)) !== null) {
+				addPage(replaceETokens(match[1], eTokens));
+			}
 		}
 
 		return pages;
