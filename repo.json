@@ -154,6 +154,23 @@
       ]
     },
     {
+      "id": "swaytranslations",
+      "name": "Sway Translations",
+      "version": "0.1.0-cinder",
+      "description": "Search Sway Translations WordPress pages for EPUB/PDF downloads.",
+      "contentType": "books",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/swaytranslations.js",
+      "minCinderVersion": "2.0.0",
+      "contentTypes": [
+        "ebook",
+        "webnovel"
+      ],
+      "contentSubtypes": [
+        "lightNovel",
+        "webFiction"
+      ]
+    },
+    {
       "id": "gocomics",
       "name": "GoComics",
       "version": "3.3.1",
