@@ -41,7 +41,7 @@
       "id": "mangadex",
       "name": "MangaDex",
       "version": "1.0.7",
-      "description": "Search manga from MangaDex.org — free, community-run manga platform",
+      "description": "Search manga from MangaDex.org - free, community-run manga platform",
       "contentType": "manga",
       "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/mangadex.js",
       "minCinderVersion": "2.0.0",
@@ -56,7 +56,7 @@
       "id": "readcomiconline",
       "name": "ReadComicOnline",
       "version": "1.0.12",
-      "description": "Read Marvel, DC, Image and more comics — the largest western comics library",
+      "description": "Read Marvel, DC, Image and more comics - the largest western comics library",
       "contentType": "comics",
       "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/readcomiconline.js",
       "minCinderVersion": "2.0.0",
@@ -82,6 +82,24 @@
         "manga",
         "manhwa",
         "manhua"
+      ]
+    },
+    {
+      "id": "webtoons",
+      "name": "WEBTOON",
+      "version": "0.1.0-cinder",
+      "description": "Read public, web-visible WEBTOON Originals and Canvas episodes.",
+      "contentType": "manga",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/webtoons.js",
+      "minCinderVersion": "2.0.0",
+      "contentTypes": [
+        "manga",
+        "comic"
+      ],
+      "contentSubtypes": [
+        "webtoon",
+        "manhwa",
+        "comicStrip"
       ]
     },
     {

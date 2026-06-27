@@ -28,6 +28,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **WebNovel** | Books | Search and read public chaptered web novels from WebNovel; locked chapters are not bypassed. |
 | **ReadComicsOnline** | Comics | Search, read, and download comics from ReadComicsOnline. |
 | **WeebCentral** | Manga | Search, read, and download manga from WeebCentral. Credit to Theoenogo for building this extension. |
+| **WEBTOON** | Manga/Comics | Search public WEBTOON Originals and Canvas titles and read web-visible episodes as long-strip chapters. |
 | **DownMagaz** | Magazines | Search, read, and download magazines from downmagaz.net. Credit to Tonynks for building much of this extension. |
 | **GoComics** | Comics | Read daily comic strips from GoComics, Comics Kingdom, ComicsRSS, and more. Credit to Tonynks for the source extension. |
 | **ComicHubFree** | Comics | Search and read western comics from ComicHubFree. |
