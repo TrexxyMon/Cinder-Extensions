@@ -110,8 +110,8 @@
       "contentType": "magazine",
       "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/downmagaz_device.js",
       "minCinderVersion": "2.0.0",
-      "debridSupport": "optional",
-      "debridDescription": "Optional Debrid-Link acceleration",
+      "debridSupport": "required",
+      "debridDescription": "Requires Debrid-Link",
       "contentTypes": [
         "magazine"
       ]
