@@ -2,7 +2,7 @@ var ComicHubFree = {};
 
 ComicHubFree.id = "comichubfree";
 ComicHubFree.name = "ComicHubFree";
-ComicHubFree.version = "0.1.1-cinder";
+ComicHubFree.version = "0.1.2-cinder";
 ComicHubFree.icon = "CHF";
 ComicHubFree.description = "Read western comics from ComicHubFree.";
 ComicHubFree.contentType = "comics";
@@ -36,7 +36,7 @@ ComicHubFree._headers = function(extra) {
 ComicHubFree._imageHeaders = function(referer) {
   return {
     "Referer": referer || this.BASE_URL + "/",
-    "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    "Accept": "image/jpeg,image/png,image/webp,image/*,*/*;q=0.8",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
   };
 };
@@ -102,8 +102,48 @@ ComicHubFree._fetchText = async function(url, headers) {
 
 ComicHubFree._imageFromHtml = function(html) {
   var dataSrc = this._attr(html, "data-src");
+  var dataOriginal = this._attr(html, "data-original");
+  var dataLazy = this._attr(html, "data-lazy");
   var src = this._attr(html, "src");
-  return this._absUrl(dataSrc) || this._absUrl(src);
+  return this._absUrl(dataSrc) || this._absUrl(dataOriginal) || this._absUrl(dataLazy) || this._absUrl(src);
+};
+
+ComicHubFree._isLiveImage = async function(url, headers) {
+  try {
+    var res = await cinder.fetch(url, {
+      method: "HEAD",
+      headers: headers,
+      timeout: 8000,
+    });
+    if (!res || res.status === 0) return true;
+    if (res.status < 200 || res.status >= 300) return false;
+    var contentType = "";
+    var responseHeaders = res.headers || {};
+    Object.keys(responseHeaders).forEach(function(key) {
+      if (key.toLowerCase() === "content-type") contentType = String(responseHeaders[key] || "");
+    });
+    return !contentType || /^image\//i.test(contentType);
+  } catch (error) {
+    return true;
+  }
+};
+
+ComicHubFree._filterLivePages = async function(pages) {
+  var filtered = [];
+  var batchSize = 6;
+  for (var i = 0; i < pages.length; i += batchSize) {
+    var batch = pages.slice(i, i + batchSize);
+    var checks = await Promise.all(batch.map(async function(page) {
+      return {
+        page: page,
+        live: await ComicHubFree._isLiveImage(page.url, page.headers),
+      };
+    }));
+    checks.forEach(function(result) {
+      if (result.live) filtered.push(result.page);
+    });
+  }
+  return filtered;
 };
 
 ComicHubFree._titleFromPath = function(path) {
@@ -271,6 +311,7 @@ ComicHubFree.getPages = async function(chapterId) {
       headers: this._imageHeaders(allUrl),
     });
   }
+  pages = await this._filterLivePages(pages);
   if (pages.length === 0) throw new Error("ComicHubFree returned no pages for this chapter.");
   return pages;
 };

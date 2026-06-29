@@ -206,7 +206,7 @@
     {
       "id": "comichubfree",
       "name": "ComicHubFree",
-      "version": "0.1.1-cinder",
+      "version": "0.1.2-cinder",
       "description": "Read western comics from ComicHubFree.",
       "contentType": "comics",
       "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/comichubfree.js",
