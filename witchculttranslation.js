@@ -1,7 +1,7 @@
 __cinderExport = {
     id: "witchculttranslation",
     name: "Witch Cult Translations",
-    version: "0.1.1",
+    version: "0.1.2",
     icon: "WC",
     description: "Read public chaptered Re:Zero web novel fan translations from Witch Cult Translations and package arcs into EPUB on device. No debrid required.",
     contentType: "books",
@@ -18,6 +18,7 @@ __cinderExport = {
     },
 
     BASE_URL: "https://witchculttranslation.com",
+    DEFAULT_COVER: "https://witchculttranslation.com/wp-content/uploads/2024/08/2408_garcar-min.png?x95263",
 
     ARCS: [
         {
@@ -25,23 +26,27 @@ __cinderExport = {
             title: "Re:Zero Web Novel - All HTML Chapters",
             url: "https://witchculttranslation.com/table-of-content/",
             description: "All public HTML chapters listed in the Witch Cult Translations table of contents. PDF-only legacy chapter batches are skipped.",
+            cover: "https://witchculttranslation.com/wp-content/uploads/2024/08/2408_garcar-min.png?x95263",
         },
         {
             id: "arc-1",
             title: "Arc 1: The Capital City's First Day",
             url: "https://witchculttranslation.com/arc-1/",
+            cover: "https://witchculttranslation.com/wp-content/uploads/2022/02/Emilia_Pin_3.png?x95263",
         },
         {
             id: "arc-2",
             title: "Arc 2: The Chaotic Week",
             url: "https://witchculttranslation.com/table-of-content/",
             description: "Arc 2 chapters linked from Witch Cult Translations' table of contents.",
+            cover: "https://witchculttranslation.com/wp-content/uploads/2022/02/Emilia_Pin_3.png?x95263",
         },
         {
             id: "arc-3",
             title: "Arc 3: Return to the Royal Capital",
             url: "https://witchculttranslation.com/table-of-content/",
             description: "Arc 3 chapters linked from Witch Cult Translations' table of contents.",
+            cover: "https://witchculttranslation.com/wp-content/uploads/2022/02/Satella_Pin.png?x95263",
         },
         {
             id: "arc-4",
@@ -49,36 +54,43 @@ __cinderExport = {
             url: "https://witchculttranslation.com/table-of-content/",
             description: "Arc 4 HTML chapters and PDF-batch chapter references linked from Witch Cult Translations' table of contents.",
             allowPdfReferences: true,
+            cover: "https://witchculttranslation.com/wp-content/uploads/2024/09/png-echidna-beatrice-2-editado-2.jpg?x95263",
         },
         {
             id: "arc-5",
             title: "Arc 5: Stars What Make History",
             url: "https://witchculttranslation.com/arc-5/",
+            cover: "https://witchculttranslation.com/wp-content/uploads/2025/05/Gp9cmEIaEAAE3kc-scaled.jpg?x95263",
         },
         {
             id: "arc-6",
             title: "Arc 6: Hall of Memories",
             url: "https://witchculttranslation.com/arc-6/",
+            cover: "https://witchculttranslation.com/wp-content/uploads/2024/09/FqJJIV3aYAA5KYw-1-min-scaled.jpg?x95263",
         },
         {
             id: "arc-7",
             title: "Arc 7: The Land of Wolves",
             url: "https://witchculttranslation.com/arc-7/",
+            cover: "https://i.redd.it/bmdz6xtajix61.jpg",
         },
         {
             id: "arc-8",
             title: "Arc 8: Vincent Vollachia",
             url: "https://witchculttranslation.com/arc-8/",
+            cover: "https://pbs.twimg.com/media/Ft0wiBfaQAEfQAf?format=jpg&name=4096x4096",
         },
         {
             id: "arc-9",
             title: "Arc 9: Light of a Nameless Star",
             url: "https://witchculttranslation.com/arc-9/",
+            cover: "https://witchculttranslation.com/wp-content/uploads/2024/08/2408_garcar-min.png?x95263",
         },
         {
             id: "arc-10",
             title: "Arc 10: The Land of the Lion Kings",
             url: "https://witchculttranslation.com/arc-10/",
+            cover: "https://witchculttranslation.com/wp-content/uploads/2026/02/HAXyic0acAAL0ij.jpg?x95263",
         },
     ],
 
@@ -117,6 +129,100 @@ __cinderExport = {
 
     _escapeRegExp: function(value) {
         return String(value || "").replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+    },
+
+    _escapeAttr: function(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/"/g, "&quot;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    },
+
+    _attr: function(tag, name) {
+        var key = this._escapeRegExp(name);
+        var match = String(tag || "").match(new RegExp("\\s" + key + "\\s*=\\s*([\"'])([\\s\\S]*?)\\1", "i")) ||
+            String(tag || "").match(new RegExp("\\s" + key + "\\s*=\\s*([^\\s>]+)", "i"));
+        return match ? this._decode(match[2] || match[1] || "") : "";
+    },
+
+    _bestSrcsetUrl: function(srcset) {
+        var raw = this._decode(srcset || "");
+        if (!raw) return "";
+        var best = "";
+        var bestWidth = -1;
+        var parts = raw.split(",");
+        for (var i = 0; i < parts.length; i++) {
+            var part = parts[i].trim();
+            if (!part) continue;
+            var tokens = part.split(/\s+/);
+            var url = tokens[0] || "";
+            var width = 0;
+            var widthMatch = part.match(/\s(\d+)w\b/i);
+            if (widthMatch) width = parseInt(widthMatch[1], 10) || 0;
+            if (!best || width > bestWidth) {
+                best = url;
+                bestWidth = width;
+            }
+        }
+        return best;
+    },
+
+    _imageUrlFromTag: function(tag, pageUrl) {
+        var candidates = [
+            this._attr(tag, "data-full-url"),
+            this._attr(tag, "data-orig-file"),
+            this._attr(tag, "data-lazy-src"),
+            this._attr(tag, "data-src"),
+            this._bestSrcsetUrl(this._attr(tag, "data-srcset")),
+            this._bestSrcsetUrl(this._attr(tag, "srcset")),
+            this._attr(tag, "src"),
+        ];
+        for (var i = 0; i < candidates.length; i++) {
+            var url = this._decode(candidates[i] || "").trim();
+            if (!url || /^data:/i.test(url) || /^javascript:/i.test(url) || /^about:blank$/i.test(url) || url.charAt(0) === "#") continue;
+            return this._abs(url, pageUrl);
+        }
+        return "";
+    },
+
+    _isUsefulImage: function(url, tag) {
+        var value = String(url || "").toLowerCase();
+        var raw = String(tag || "").toLowerCase();
+        if (!value) return false;
+        if (/wct_logo|satella_pin|emilia_pin|\/jp\.png|\/es\.png|\/br\.png|\/cn\.png|france-flag|qr_|gravatar|avatar|identicon/.test(value + " " + raw)) return false;
+        if (/\.(svg)(?:[?#].*)?$/i.test(value)) return false;
+        return /\.(png|jpe?g|webp)(?:[?#].*)?$/i.test(value) || /pbs\.twimg\.com\/media\//i.test(value) || /i\.redd\.it\//i.test(value);
+    },
+
+    _coverFromHtml: function(html, pageUrl) {
+        var og = this._meta(html, "og:image") || this._meta(html, "twitter:image");
+        if (og) {
+            var absolute = this._abs(og, pageUrl);
+            if (this._isUsefulImage(absolute, "")) return absolute;
+        }
+        var regex = /<img\b[^>]*>/gi;
+        var match;
+        while ((match = regex.exec(String(html || ""))) !== null) {
+            var url = this._imageUrlFromTag(match[0], pageUrl);
+            if (this._isUsefulImage(url, match[0])) return url;
+        }
+        return this.DEFAULT_COVER;
+    },
+
+    _normalizeImageTag: function(tag, pageUrl) {
+        var src = this._imageUrlFromTag(tag, pageUrl);
+        if (!src) return "";
+        var alt = this._attr(tag, "alt");
+        var width = this._attr(tag, "width").replace(/[^\d.]/g, "");
+        var height = this._attr(tag, "height").replace(/[^\d.]/g, "");
+        var className = this._attr(tag, "class");
+        var attrs = ['src="' + this._escapeAttr(src) + '"'];
+        attrs.push('alt="' + this._escapeAttr(alt) + '"');
+        if (width) attrs.push('width="' + this._escapeAttr(width) + '"');
+        if (height) attrs.push('height="' + this._escapeAttr(height) + '"');
+        if (className) attrs.push('class="' + this._escapeAttr(className) + '"');
+        return "<img " + attrs.join(" ") + " />";
     },
 
     _stripTags: function(html) {
@@ -186,7 +292,7 @@ __cinderExport = {
             id: arc.id,
             title: arc.title,
             author: "Tappei Nagatsuki / Witch Cult Translations",
-            cover: "",
+            cover: arc.cover || this.DEFAULT_COVER,
             url: arc.url,
             format: "epub",
             source: "Witch Cult Translations",
@@ -353,11 +459,15 @@ __cinderExport = {
         var cleaned = String(html || "");
         cleaned = cleaned.replace(/<script[\s\S]*?<\/script>/gi, "");
         cleaned = cleaned.replace(/<style[\s\S]*?<\/style>/gi, "");
-        cleaned = cleaned.replace(/<noscript[\s\S]*?<\/noscript>/gi, "");
+        cleaned = cleaned.replace(/<noscript\b[^>]*>([\s\S]*?)<\/noscript>/gi, "$1");
         cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, "");
         cleaned = cleaned.replace(/<form[\s\S]*?<\/form>/gi, "");
         cleaned = cleaned.replace(/<div\b[^>]*class=["'][^"']*(?:sharedaddy|jp-relatedposts|comments|comment|entry-meta|pum-|wp-block-buttons)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, "");
         cleaned = cleaned.replace(/<p>\s*(?:&nbsp;|\s)*<\/p>/gi, "");
+        cleaned = cleaned.replace(/<source\b[^>]*>/gi, "");
+        cleaned = cleaned.replace(/<img\b[^>]*>/gi, function(tag) {
+            return __cinderExport._normalizeImageTag(tag, pageUrl);
+        });
         cleaned = cleaned.replace(/(?:href|src)=["']([^"']+)["']/gi, function(full, value) {
             if (!value || /^data:/i.test(value) || /^javascript:/i.test(value) || value.charAt(0) === "#") return full;
             var quote = full.indexOf("'") >= 0 ? "'" : '"';
@@ -399,6 +509,7 @@ __cinderExport = {
                     id: "latest-" + index + "::" + chapter.id,
                     title: chapter.title,
                     author: "Witch Cult Translations",
+                    cover: __cinderExport.DEFAULT_COVER,
                     url: chapter.id,
                     format: "epub",
                     source: "Witch Cult Translations",

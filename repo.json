@@ -176,7 +176,7 @@
     {
       "id": "witchculttranslation",
       "name": "Witch Cult Translations",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "Read public chaptered Re:Zero web novel fan translations from Witch Cult Translations and package arcs into EPUB on device. No debrid required.",
       "contentType": "books",
       "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/witchculttranslation.js",
