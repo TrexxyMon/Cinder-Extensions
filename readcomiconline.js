@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.13",
+	version: "1.0.14",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "comics",
@@ -55,7 +55,8 @@ __cinderExport = {
 		let match;
 
 		while ((match = blockRegex.exec(res.data)) !== null) {
-			const slug = match[1];
+			const slug = this._normalizeComicSlug(match[1]);
+			if (!slug) continue;
 			const title = match[2] || slug.replace(/-/g, " ");
 			const coverPath = match[3];
 
@@ -87,7 +88,10 @@ __cinderExport = {
 
 	async getChapters(mangaId) {
 		const baseUrl = this._baseUrl;
-		const url = `${baseUrl}/Comic/${mangaId}`;
+		const comicSlug = this._normalizeComicSlug(mangaId);
+		if (!comicSlug) return [];
+
+		const url = `${baseUrl}/Comic/${comicSlug}`;
 		const res = await cinder.fetch(url, {
 			headers: {
 				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
@@ -99,7 +103,7 @@ __cinderExport = {
 
 		const chapters = [];
 		const seen = {};
-		const escapedMangaId = mangaId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const escapedMangaId = comicSlug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 		function decodeHtml(value) {
 			return (value || "")
@@ -316,7 +320,10 @@ __cinderExport = {
 	// ── Manga Details ────────────────────────────────
 
 	async getMangaDetails(id) {
-		const url = `${this._baseUrl}/Comic/${id}`;
+		const comicSlug = this._normalizeComicSlug(id);
+		if (!comicSlug) throw new Error("Invalid comic id");
+
+		const url = `${this._baseUrl}/Comic/${comicSlug}`;
 		const res = await cinder.fetch(url, {
 			headers: {
 				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
@@ -328,7 +335,7 @@ __cinderExport = {
 
 		const doc = cinder.parseHTML(res.data);
 
-		const title = (doc.querySelector(".barContent h2, .bigChar") || {}).text?.() || id.replace(/-/g, " ");
+		const title = (doc.querySelector(".barContent h2, .bigChar") || {}).text?.() || comicSlug.replace(/-/g, " ");
 		const descEl = doc.querySelector(".summary, .barContent p");
 		const description = descEl ? descEl.text().trim() : "";
 
@@ -348,7 +355,7 @@ __cinderExport = {
 		}
 
 		return {
-			id: id,
+			id: comicSlug,
 			title: title,
 			author: "Various",
 			description: description,
@@ -394,35 +401,90 @@ __cinderExport = {
 
 	_parseComicList(html) {
 		const items = [];
-		const linkRegex = /href="\/Comic\/([^"]+)"[^>]*>/g;
-		const coverRegex = /src="(\/Uploads[^"]+)"/g;
-		const titleRegex = /title="([^"]+)"/g;
-
-		const comics = [];
+		const seen = {};
 		let match;
-		while ((match = linkRegex.exec(html)) !== null) {
-			const slug = match[1];
-			if (comics.some(c => c === slug)) continue;
-			comics.push(slug);
+
+		function decodeHtml(value) {
+			return (value || "")
+				.replace(/&amp;/g, "&")
+				.replace(/&#39;/g, "'")
+				.replace(/&quot;/g, '"')
+				.replace(/&lt;/g, "<")
+				.replace(/&gt;/g, ">")
+				.replace(/\s+/g, " ")
+				.trim();
 		}
 
-		const covers = [];
-		while ((match = coverRegex.exec(html)) !== null) {
-			covers.push(this._baseUrl + match[1]);
+		function textFromSlug(slug) {
+			return slug.replace(/-/g, " ").trim();
 		}
 
-		for (let i = 0; i < comics.length; i++) {
+		const addComic = (rawPath, title, coverPath) => {
+			const slug = this._normalizeComicSlug(rawPath);
+			if (!slug || seen[slug]) return;
+			seen[slug] = true;
+
+			let cleanTitle = decodeHtml(title);
+			if (
+				!cleanTitle ||
+				/^(issue|tpb|full|chapter|annual|special)\b/i.test(cleanTitle)
+			) {
+				cleanTitle = textFromSlug(slug);
+			}
+
+			let cover = "";
+			if (coverPath) {
+				const cleanCover = coverPath.replace(/&amp;/g, "&");
+				cover = cleanCover.startsWith("/")
+					? this._baseUrl + cleanCover
+					: cleanCover;
+			}
+
 			items.push({
-				id: comics[i],
-				title: comics[i].replace(/-/g, " "),
+				id: slug,
+				title: cleanTitle,
 				author: "Unknown",
-				cover: covers[i] || "",
-				url: `${this._baseUrl}/Comic/${comics[i]}`,
+				cover,
+				url: `${this._baseUrl}/Comic/${slug}`,
 				format: "comics",
 			});
+		};
+
+		// Prefer cover cards when present because they carry stable series links,
+		// title text, and cover URLs together.
+		const cardRegex = /<a\s+[^>]*href=["']\/Comic\/([^"']+)["'][^>]*>\s*<img\b([^>]*)>/gi;
+		while ((match = cardRegex.exec(html)) !== null) {
+			const rawPath = match[1];
+			const attrs = match[2] || "";
+			const titleMatch = attrs.match(/\btitle=["']([^"']*)["']/i);
+			const srcMatch = attrs.match(/\bsrc=["']([^"']*)["']/i);
+			addComic(rawPath, titleMatch ? titleMatch[1] : "", srcMatch ? srcMatch[1] : "");
+		}
+
+		// Fallback for list/table pages. Normalize issue-level hrefs like
+		// /Comic/Series/Issue-4?id=123 back to /Comic/Series so chapter loading
+		// cannot accidentally use another page as the parent comic.
+		const anchorRegex = /<a\s+[^>]*href=["']\/Comic\/([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+		while ((match = anchorRegex.exec(html)) !== null) {
+			const rawPath = match[1];
+			const text = (match[2] || "").replace(/<[^>]+>/g, "");
+			addComic(rawPath, text, "");
 		}
 
 		return items;
+	},
+
+	_normalizeComicSlug(value) {
+		let raw = String(value || "").trim();
+		if (!raw) return "";
+
+		raw = raw.replace(this._baseUrl, "");
+		raw = raw.replace(/^https?:\/\/[^/]+/i, "");
+		raw = raw.replace(/^\/?Comic\//i, "");
+		raw = raw.replace(/^\/+/, "");
+		raw = raw.split(/[?#]/)[0];
+		raw = raw.split("/")[0];
+		return raw.trim();
 	},
 
 	// ── Settings ──────────────────────────────────────
