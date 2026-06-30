@@ -25,6 +25,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **ElScione Server** | Books/Manga/Webnovels | Search an h5ai ebook and manga server for EPUB, PDF, CBZ, and CBR files. |
 | **OceanofPDF** | Books | Download-source extension with separate EPUB/PDF results and POST form downloads. |
 | **ReadNovelEU** | Books | Search and read chaptered web novels from the current WuxiaWorld destination. |
+| **NovelBin** | Books/Webnovels | Search public chaptered web novels and build EPUBs on device. No debrid required. |
 | **WebNovel** | Books | Search and read public chaptered web novels from WebNovel; locked chapters are not bypassed. |
 | **Witch Cult Translations** | Books/Webnovels | Read public chaptered Re:Zero web novel fan translations and package arcs into EPUB on device. |
 | **ReadComicsOnline** | Comics | Search, read, and download comics from ReadComicsOnline. |

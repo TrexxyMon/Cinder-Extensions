@@ -154,6 +154,26 @@
       ]
     },
     {
+      "id": "novelbin",
+      "name": "NovelBin",
+      "version": "0.1.6-cinder",
+      "description": "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.",
+      "contentType": "books",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/novelbin.js",
+      "minCinderVersion": "2.0.0",
+      "contentTypes": [
+        "webnovel",
+        "ebook"
+      ],
+      "contentSubtypes": [
+        "webFiction",
+        "lightNovel",
+        "wuxia",
+        "xianxia",
+        "xuanhuan"
+      ]
+    },
+    {
       "id": "webnovel",
       "name": "WebNovel",
       "version": "0.1.2-cinder",
