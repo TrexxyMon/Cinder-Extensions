@@ -40,7 +40,7 @@
     {
       "id": "mangadex",
       "name": "MangaDex",
-      "version": "1.0.7",
+      "version": "1.0.9",
       "description": "Search manga from MangaDex.org - free, community-run manga platform",
       "contentType": "manga",
       "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/mangadex.js",

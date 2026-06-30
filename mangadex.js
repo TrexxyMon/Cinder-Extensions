@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "mangadex",
 	name: "MangaDex",
-	version: "1.0.7",
+	version: "1.0.9",
 	icon: "ðŸ“–",
 	description: "Search manga from MangaDex.org â€” free, community-run manga platform",
 	contentType: "manga",
@@ -47,6 +47,66 @@ __cinderExport = {
 	_getCoverFileName(relationships) {
 		const cover = this._getRelationship(relationships, "cover_art");
 		return cover?.attributes?.fileName || null;
+	},
+
+	_isReadableChapter(attrs) {
+		if (!attrs) return false;
+		if (attrs.externalUrl) return false;
+		return Number(attrs.pages || 0) > 0;
+	},
+
+	_getLanguageLabel(code) {
+		const labels = {
+			en: "English",
+			"es-la": "Spanish",
+			es: "Spanish",
+			fr: "French",
+			de: "German",
+			it: "Italian",
+			"pt-br": "Portuguese",
+			pt: "Portuguese",
+			ru: "Russian",
+			vi: "Vietnamese",
+			id: "Indonesian",
+			tr: "Turkish",
+			pl: "Polish",
+			th: "Thai",
+			ja: "Japanese",
+			"ja-ro": "Japanese",
+			ko: "Korean",
+			"ko-ro": "Korean",
+			zh: "Chinese",
+			"zh-hk": "Chinese",
+		};
+		return labels[code] || String(code || "").toUpperCase() || "Unknown";
+	},
+
+	_getChapterPreferenceScore(attrs) {
+		const lang = attrs?.translatedLanguage || "";
+		if (lang === "en") return 0;
+		return 10;
+	},
+
+	_compareReadableChapters(candidate, current) {
+		const candidateScore = this._getChapterPreferenceScore(candidate.attributes);
+		const currentScore = this._getChapterPreferenceScore(current.attributes);
+		if (candidateScore !== currentScore) return candidateScore - currentScore;
+
+		const candidatePages = Number(candidate.attributes?.pages || 0);
+		const currentPages = Number(current.attributes?.pages || 0);
+		if (candidatePages !== currentPages) return currentPages - candidatePages;
+
+		const candidateDate = Date.parse(candidate.attributes?.publishAt || "") || 0;
+		const currentDate = Date.parse(current.attributes?.publishAt || "") || 0;
+		return currentDate - candidateDate;
+	},
+
+	_formatChapterTitle(attrs) {
+		const chapter = attrs.chapter || "?";
+		const lang = attrs.translatedLanguage || "";
+		const title = attrs.title || `Chapter ${chapter}`;
+		if (!lang || lang === "en") return title;
+		return `${title} [${this._getLanguageLabel(lang)}]`;
 	},
 
 	// â”€â”€ Search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -220,13 +280,13 @@ __cinderExport = {
 	// â”€â”€ Chapters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 	async getChapters(mangaId) {
-		const chapters = [];
+		const chaptersByNumber = {};
 		let offset = 0;
 		const limit = 100;
 		let total = 1;
 
 		while (offset < total) {
-			const url = `https://api.mangadex.org/manga/${mangaId}/feed?limit=${limit}&offset=${offset}&translatedLanguage[]=en&order[chapter]=asc&includes[]=scanlation_group`;
+			const url = `https://api.mangadex.org/manga/${mangaId}/feed?limit=${limit}&offset=${offset}&order[chapter]=asc&includes[]=scanlation_group`;
 
 			const res = await cinder.fetch(url, {
 				headers: { 
@@ -242,21 +302,40 @@ __cinderExport = {
 
 			for (const ch of data.data || []) {
 				const attrs = ch.attributes;
-				const group = this._getRelationship(ch.relationships, "scanlation_group");
-
-				chapters.push({
-					id: ch.id,
-					title: attrs.title || `Chapter ${attrs.chapter || "?"}`,
-					chapterNumber: Number.parseFloat(attrs.chapter) || 0,
-					dateUploaded: attrs.publishAt,
-					scanlator: group?.attributes?.name,
-				});
+				if (!this._isReadableChapter(attrs)) continue;
+				const chapterKey = String(attrs.chapter || ch.id).trim();
+				const existing = chaptersByNumber[chapterKey];
+				if (!existing || this._compareReadableChapters(ch, existing) < 0) {
+					chaptersByNumber[chapterKey] = ch;
+				}
 			}
 
 			offset += limit;
 		}
 
-		return chapters;
+		return Object.values(chaptersByNumber)
+			.map((ch) => {
+				const attrs = ch.attributes;
+				const group = this._getRelationship(ch.relationships, "scanlation_group");
+				const languageLabel = this._getLanguageLabel(attrs.translatedLanguage);
+				const scanlator = group?.attributes?.name || "";
+				return {
+					id: ch.id,
+					title: this._formatChapterTitle(attrs),
+					chapterNumber: Number.parseFloat(attrs.chapter) || 0,
+					dateUploaded: attrs.publishAt,
+					scanlator:
+						attrs.translatedLanguage && attrs.translatedLanguage !== "en"
+							? `${scanlator || "Unknown"} (${languageLabel})`
+							: scanlator,
+				};
+			})
+			.sort((a, b) => {
+				if (a.chapterNumber !== b.chapterNumber) {
+					return a.chapterNumber - b.chapterNumber;
+				}
+				return String(a.dateUploaded || "").localeCompare(String(b.dateUploaded || ""));
+			});
 	},
 
 	// â”€â”€ Pages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
