@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.12",
+	version: "1.0.13",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "comics",
@@ -86,7 +86,8 @@ __cinderExport = {
 	// ── Chapters (Issues) ────────────────────────────
 
 	async getChapters(mangaId) {
-		const url = `${this._baseUrl}/Comic/${mangaId}`;
+		const baseUrl = this._baseUrl;
+		const url = `${baseUrl}/Comic/${mangaId}`;
 		const res = await cinder.fetch(url, {
 			headers: {
 				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
@@ -97,41 +98,81 @@ __cinderExport = {
 		if (res.status !== 200) return [];
 
 		const chapters = [];
-
-		// Parse issue links via regex (more reliable than DOM for table rows)
-		const issueRegex = /href="(\/Comic\/[^"]*\/Issue-([^"?]+)[^"]*)"/g;
-		let match;
 		const seen = {};
+		const escapedMangaId = mangaId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-		while ((match = issueRegex.exec(res.data)) !== null) {
-			const fullPath = match[1];
-			const issueNum = match[2];
-			const key = issueNum;
+		function decodeHtml(value) {
+			return (value || "")
+				.replace(/&amp;/g, "&")
+				.replace(/&#39;/g, "'")
+				.replace(/&quot;/g, '"')
+				.replace(/&lt;/g, "<")
+				.replace(/&gt;/g, ">")
+				.replace(/\s+/g, " ")
+				.trim();
+		}
 
-			if (seen[key]) continue;
+		function labelFromSlug(slug) {
+			let decodedSlug = (slug || "").split("?")[0];
+			try {
+				decodedSlug = decodeURIComponent(decodedSlug);
+			} catch {}
+
+			const cleanSlug = decodedSlug
+				.replace(/-/g, " ")
+				.trim();
+			if (!cleanSlug) return "Issue";
+			return cleanSlug
+				.replace(/\bTPB\b/gi, "TPB")
+				.replace(/\bIssue\s+(\d+)/i, "Issue #$1");
+		}
+
+		function addChapter(fullPath, rawText) {
+			const normalizedPath = fullPath.replace(/&amp;/g, "&");
+			const parts = normalizedPath.match(/^\/Comic\/[^/]+\/([^?#]+)(?:[?#].*)?$/);
+			const slug = parts ? parts[1] : "";
+			const key = normalizedPath.toLowerCase();
+			if (!slug || seen[key]) return;
 			seen[key] = true;
 
+			const title = decodeHtml(rawText) || labelFromSlug(slug);
+			const numberMatch = slug.match(/(?:Issue|TPB|Chapter|Part|Annual|Special)-?(\d+(?:-\d+)?)/i);
+			const chapter = numberMatch
+				? numberMatch[1].replace(/-/g, ".")
+				: String(chapters.length + 1);
+
 			chapters.push({
-				id: fullPath,
-				title: `Issue #${issueNum.replace(/-/g, ".")}`,
-				chapter: issueNum.replace(/-/g, "."),
-				url: this._baseUrl + fullPath,
+				id: normalizedPath,
+				title,
+				chapter,
+				url: baseUrl + normalizedPath,
 			});
 		}
 
-		// Also check for full-issue / TPB links
-		const fullRegex = /href="(\/Comic\/[^"]*\/Full[^"]*)"/g;
+		// Parse all issue-style links for this comic from the listing table.
+		// Some series use Issue-#, but collected editions use TPB-#, Annual,
+		// Special, or other suffixes. Restrict to the current comic slug so
+		// navigation/self/comment links are not treated as chapters.
+		const issueRegex = new RegExp(
+			`<a\\s+[^>]*href=["'](\\/Comic\\/${escapedMangaId}\\/[^"']+)["'][^>]*>([\\s\\S]*?)<\\/a>`,
+			"gi",
+		);
+		let match;
+		while ((match = issueRegex.exec(res.data)) !== null) {
+			const fullPath = match[1];
+			const text = match[2].replace(/<[^>]+>/g, "");
+			addChapter(fullPath, text);
+		}
+
+		// Legacy fallback for old pages where the anchor text may not be inside
+		// the expected listing markup.
+		const fullRegex = new RegExp(
+			`href=["'](\\/Comic\\/${escapedMangaId}\\/Full[^"']*)["']`,
+			"gi",
+		);
 		while ((match = fullRegex.exec(res.data)) !== null) {
 			const fullPath = match[1];
-			if (seen["full"]) continue;
-			seen["full"] = true;
-
-			chapters.push({
-				id: fullPath,
-				title: "Full Issue",
-				chapter: "0",
-				url: this._baseUrl + fullPath,
-			});
+			addChapter(fullPath, "Full Issue");
 		}
 
 		// Reverse so Issue #1 is at the top
