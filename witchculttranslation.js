@@ -1,7 +1,7 @@
 __cinderExport = {
     id: "witchculttranslation",
     name: "Witch Cult Translations",
-    version: "0.1.0",
+    version: "0.1.1",
     icon: "WC",
     description: "Read public chaptered Re:Zero web novel fan translations from Witch Cult Translations and package arcs into EPUB on device. No debrid required.",
     contentType: "books",
@@ -30,6 +30,25 @@ __cinderExport = {
             id: "arc-1",
             title: "Arc 1: The Capital City's First Day",
             url: "https://witchculttranslation.com/arc-1/",
+        },
+        {
+            id: "arc-2",
+            title: "Arc 2: The Chaotic Week",
+            url: "https://witchculttranslation.com/table-of-content/",
+            description: "Arc 2 chapters linked from Witch Cult Translations' table of contents.",
+        },
+        {
+            id: "arc-3",
+            title: "Arc 3: Return to the Royal Capital",
+            url: "https://witchculttranslation.com/table-of-content/",
+            description: "Arc 3 chapters linked from Witch Cult Translations' table of contents.",
+        },
+        {
+            id: "arc-4",
+            title: "Arc 4: Everlasting Contract",
+            url: "https://witchculttranslation.com/table-of-content/",
+            description: "Arc 4 HTML chapters and PDF-batch chapter references linked from Witch Cult Translations' table of contents.",
+            allowPdfReferences: true,
         },
         {
             id: "arc-5",
@@ -94,6 +113,10 @@ __cinderExport = {
             .replace(/&nbsp;/g, " ")
             .replace(/\s+/g, " ")
             .trim();
+    },
+
+    _escapeRegExp: function(value) {
+        return String(value || "").replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
     },
 
     _stripTags: function(html) {
@@ -179,9 +202,51 @@ __cinderExport = {
 
     _isChapterUrl: function(url) {
         var value = String(url || "");
-        return /^https?:\/\/witchculttranslation\.com\/\d{4}\/\d{2}\/\d{2}\//i.test(value) &&
+        if (/\.(pdf|jpg|jpeg|png|webp)(?:[?#].*)?$/i.test(value)) return false;
+        if (/^https?:\/\/witchculttranslation\.com\/\d{4}\/\d{2}\/\d{2}\//i.test(value) &&
             /(?:arc-\d+|chapter|prologue|interlude|intermission)/i.test(value) &&
-            !/\.(pdf|jpg|jpeg|png|webp)(?:[?#].*)?$/i.test(value);
+            !/\.(pdf|jpg|jpeg|png|webp)(?:[?#].*)?$/i.test(value)) {
+            return true;
+        }
+        if (/^https?:\/\/(?:www\.)?eminenttranslations\.com\//i.test(value) &&
+            /(?:arc-2|volume-2|chapter-\d+)/i.test(value)) {
+            return true;
+        }
+        if (/^https?:\/\/kagurojp\.wordpress\.com\/\d{4}\/\d{2}\/\d{2}\/vol-3-ch-\d+/i.test(value)) {
+            return true;
+        }
+        return false;
+    },
+
+    _isPdfChapterReference: function(url, text, arcId) {
+        if (arcId !== "arc-4") return false;
+        var value = String(url || "");
+        var label = String(text || "");
+        return /^https?:\/\/witchculttranslation\.com\/wp-content\/uploads\/\d{4}\/\d{2}\/a4-[^"'\s<>]+\.pdf(?:[?#][^"'\s<>]*)?$/i.test(value) &&
+            /(?:chapter|interlude|intermission|appendix|phase)/i.test(label);
+    },
+
+    _chapterMatchesArc: function(href, text, arcId, isPdfReference) {
+        if (!arcId || arcId === "all") return true;
+        var url = String(href || "").toLowerCase();
+        var label = String(text || "").toLowerCase();
+        var arcText = arcId.replace("-", " ");
+        if (url.indexOf("/" + arcId + "-") !== -1 || url.indexOf("/" + arcId + "/") !== -1 || label.indexOf(arcText) !== -1) {
+            return true;
+        }
+        if (arcId === "arc-2") {
+            return /^https?:\/\/(?:www\.)?eminenttranslations\.com\//i.test(href) &&
+                (url.indexOf("arc-2") !== -1 || url.indexOf("/volume-2/") !== -1 || label.indexOf("arc 2") !== -1);
+        }
+        if (arcId === "arc-3") {
+            return /^https?:\/\/kagurojp\.wordpress\.com\//i.test(href) ||
+                url.indexOf("/category/arc-3/") !== -1 ||
+                url.indexOf("arc-3-chapter") !== -1;
+        }
+        if (arcId === "arc-4") {
+            return isPdfReference === true || url.indexOf("arc-4") !== -1 || url.indexOf("/a4-") !== -1;
+        }
+        return false;
     },
 
     _chapterNumber: function(text, url, fallback) {
@@ -201,6 +266,29 @@ __cinderExport = {
             .trim();
     },
 
+    _elementByClassHtml: function(html, className) {
+        var source = String(html || "");
+        var classPattern = new RegExp("<div\\b[^>]*class=[\"'][^\"']*\\b" + this._escapeRegExp(className) + "\\b[^\"']*[\"'][^>]*>", "i");
+        var match = classPattern.exec(source);
+        if (!match) return "";
+        var openEnd = match.index + match[0].length;
+        var token = /<\/?div\b[^>]*>/gi;
+        token.lastIndex = openEnd;
+        var depth = 1;
+        var next;
+        while ((next = token.exec(source)) !== null) {
+            if (/^<\s*\/div/i.test(next[0])) {
+                depth -= 1;
+                if (depth === 0) {
+                    return source.slice(openEnd, next.index);
+                }
+            } else {
+                depth += 1;
+            }
+        }
+        return source.slice(openEnd);
+    },
+
     _extractChapterLinks: function(html, pageUrl, arcId) {
         var links = [];
         var seen = {};
@@ -210,15 +298,16 @@ __cinderExport = {
             var href = this._abs(match[2], pageUrl);
             var text = this._cleanChapterTitle(this._stripTags(match[4]));
             if (!href || !text) continue;
-            if (!this._isChapterUrl(href)) continue;
-            if (arcId && arcId !== "all" && href.toLowerCase().indexOf("/" + arcId + "-") === -1 && text.toLowerCase().indexOf(arcId.replace("-", " ")) === -1) {
-                continue;
-            }
-            if (seen[href]) continue;
-            seen[href] = true;
+            var isHtmlChapter = this._isChapterUrl(href);
+            var isPdfReference = this._isPdfChapterReference(href, text, arcId);
+            if (!isHtmlChapter && !isPdfReference) continue;
+            if (!this._chapterMatchesArc(href, text, arcId, isPdfReference)) continue;
+            var id = isPdfReference ? "pdfref::" + encodeURIComponent(href) + "::" + encodeURIComponent(text) : href;
+            if (seen[id]) continue;
+            seen[id] = true;
             var index = links.length + 1;
             links.push({
-                id: href,
+                id: id,
                 title: text,
                 index: index,
                 chapterNumber: this._chapterNumber(text, href, index),
@@ -248,6 +337,10 @@ __cinderExport = {
     },
 
     _entryContentHtml: function(html) {
+        var readerContent = this._elementByClassHtml(html, "reader-paged-content");
+        if (readerContent) return readerContent;
+        var entryContent = this._elementByClassHtml(html, "entry-content");
+        if (entryContent) return entryContent;
         var match = String(html || "").match(/<div\b[^>]*class=["'][^"']*\bentry-content\b[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<\/article>/i);
         if (match && match[1]) return match[1];
         match = String(html || "").match(/<div\b[^>]*class=["'][^"']*\bentry-content\b[^"']*["'][^>]*>([\s\S]*?)<footer\b/i);
@@ -352,6 +445,17 @@ __cinderExport = {
 
     getBookChapter: async function(chapterId) {
         var url = String(chapterId || "");
+        if (url.indexOf("pdfref::") === 0) {
+            var parts = url.split("::");
+            var pdfUrl = parts[1] ? decodeURIComponent(parts[1]) : "";
+            var pdfTitle = parts[2] ? decodeURIComponent(parts[2]) : "PDF chapter reference";
+            return {
+                id: url,
+                title: pdfTitle,
+                url: pdfUrl,
+                html: '<p>This chapter is only available from the source as part of a Witch Cult PDF batch.</p><p><a href="' + this._decode(pdfUrl).replace(/"/g, "&quot;") + '">Open the source PDF batch</a></p>',
+            };
+        }
         var html = await this._fetchHtml(url, this.BASE_URL + "/");
         var title = this._titleFromHtml(html, url);
         var content = this._entryContentHtml(html);
