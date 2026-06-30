@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.15",
+	version: "1.0.16",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "comics",
@@ -30,30 +30,116 @@ __cinderExport = {
 	// ── Search ───────────────────────────────────────
 
 	async search(query, page = 0) {
+		const baseUrl = "https://rcostation.xyz";
 		const rawQuery = String(query || "").trim();
 		if (!rawQuery) return [];
 
-		const rawUrl = `${this._baseUrl}/Search/Comic?keyword=${encodeURIComponent(rawQuery)}`;
-		const rawRes = await cinder.fetch(rawUrl, {
-			headers: {
-				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-				"Accept": "text/html",
-			},
-		});
-
-		if (rawRes.status === 200) {
-			const rawItems = this._parseSearchResults(rawRes.data);
-			if (rawItems.length > 0) return rawItems;
+		function decodeHtml(value) {
+			return (value || "")
+				.replace(/&amp;/g, "&")
+				.replace(/&#39;/g, "'")
+				.replace(/&quot;/g, '"')
+				.replace(/&lt;/g, "<")
+				.replace(/&gt;/g, ">")
+				.replace(/\s+/g, " ")
+				.trim();
 		}
 
-		const queries = this._buildSearchQueries(rawQuery).slice(1);
-		const items = [];
-		const seen = {};
+		function normalizeComicSlug(value) {
+			let raw = String(value || "").trim();
+			if (!raw) return "";
+			raw = raw.replace(baseUrl, "");
+			raw = raw.replace(/^https?:\/\/[^/]+/i, "");
+			raw = raw.replace(/^\/?Comic\//i, "");
+			raw = raw.replace(/^\/+/, "");
+			raw = raw.split(/[?#]/)[0];
+			raw = raw.split("/")[0];
+			return raw.trim();
+		}
 
-		for (let i = 0; i < queries.length; i++) {
-			const currentQuery = queries[i];
-			const url = `${this._baseUrl}/Search/Comic?keyword=${encodeURIComponent(currentQuery)}`;
+		function addItem(items, seen, rawSlug, title, coverPath) {
+			const slug = normalizeComicSlug(rawSlug);
+			if (!slug || seen[slug]) return;
+			seen[slug] = true;
 
+			let cover = "";
+			if (coverPath) {
+				if (coverPath.startsWith("/")) {
+					cover = baseUrl + coverPath;
+				} else if (coverPath.startsWith("http")) {
+					cover = coverPath;
+				}
+			}
+
+			items.push({
+				id: slug,
+				title: decodeHtml(title) || slug.replace(/-/g, " "),
+				author: "Unknown",
+				cover: cover,
+				url: `${baseUrl}/Comic/${slug}`,
+				format: "comics",
+				extra: { slug: slug },
+			});
+		}
+
+		function parseResults(html) {
+			const items = [];
+			const seen = {};
+
+			// Original working search result parser.
+			const blockRegex = /<a\s+href="\/Comic\/([^"]+)"[^>]*>\s*<img\s+title="([^"]*)"[^>]*src="([^"]*)"[^>]*>/g;
+			let match;
+			while ((match = blockRegex.exec(html)) !== null) {
+				addItem(items, seen, match[1], match[2], match[3]);
+			}
+
+			// Exact title searches can redirect to a detail page instead of the
+			// search grid. Desktop pages expose bigChar; mobile pages may only
+			// expose issue links and image_src.
+			if (items.length === 0) {
+				const detailMatch = html.match(
+					/<a\s+[^>]*class=["'][^"']*\bbigChar\b[^"']*["'][^>]*href=["']\/Comic\/([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i,
+				);
+				if (detailMatch) {
+					const coverMatch =
+						html.match(/<link\s+rel=["']image_src["']\s+href=["']([^"']+)["']/i) ||
+						html.match(/<img\s+[^>]*(?:width=["']190px["'][^>]*height=["']250px["']|height=["']250px["'][^>]*width=["']190px["'])[^>]*src=["']([^"']+)["']/i);
+					addItem(
+						items,
+						seen,
+						detailMatch[1],
+						detailMatch[2].replace(/<[^>]+>/g, ""),
+						coverMatch ? coverMatch[1] : "",
+					);
+				}
+			}
+
+			if (items.length === 0) {
+				const issueMatch = html.match(/href=["']\/Comic\/([^\/"']+)\/[^"']+["']/i);
+				if (issueMatch) {
+					const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+					const title = decodeHtml(titleMatch ? titleMatch[1] : "")
+						.replace(/\s+comic\s*\|\s*Read[\s\S]*$/i, "")
+						.replace(/\s+comic\s+online[\s\S]*$/i, "")
+						.trim();
+					const coverMatch = html.match(
+						/<link\s+rel=["']image_src["']\s+href=["']([^"']+)["']/i,
+					);
+					addItem(
+						items,
+						seen,
+						issueMatch[1],
+						title,
+						coverMatch ? coverMatch[1] : "",
+					);
+				}
+			}
+
+			return items;
+		}
+
+		async function fetchSearch(currentQuery) {
+			const url = `${baseUrl}/Search/Comic?keyword=${encodeURIComponent(currentQuery)}`;
 			const res = await cinder.fetch(url, {
 				headers: {
 					"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
@@ -61,186 +147,43 @@ __cinderExport = {
 				},
 			});
 
-			if (res.status !== 200) continue;
-
-			const parsed = this._parseSearchResults(res.data);
-			for (const item of parsed) {
-				if (!item.id || seen[item.id]) continue;
-				seen[item.id] = true;
-				items.push(item);
-			}
-
-			if (items.length > 0) break;
+			if (res.status !== 200) return [];
+			return parseResults(res.data || "");
 		}
 
-		return this._sortSearchResults(rawQuery, items);
-	},
+		const rawItems = await fetchSearch(rawQuery);
+		if (rawItems.length > 0) return rawItems;
 
-	// ── Chapters (Issues) ────────────────────────────
-
-	_parseSearchResults(html) {
-		const items = [];
-		const seen = {};
-
-		const blockRegex = /<a\s+href="\/Comic\/([^"]+)"[^>]*>\s*<img\s+title="([^"]*)"[^>]*src="([^"]*)"[^>]*>/g;
-		let match;
-
-		while ((match = blockRegex.exec(html)) !== null) {
-			const slug = this._normalizeComicSlug(match[1]);
-			if (!slug) continue;
-			const title = match[2] || slug.replace(/-/g, " ");
-			const coverPath = match[3];
-
-			if (seen[slug]) continue;
-			seen[slug] = true;
-
-			let cover = "";
-			if (coverPath.startsWith("/")) {
-				cover = this._baseUrl + coverPath;
-			} else if (coverPath.startsWith("http")) {
-				cover = coverPath;
-			}
-
-			items.push({
-				id: slug,
-				title: title,
-				author: "Unknown",
-				cover: cover,
-				url: `${this._baseUrl}/Comic/${slug}`,
-				format: "comics",
-				extra: { slug: slug },
-			});
-		}
-
-		if (items.length === 0) {
-			const detailMatch = html.match(
-				/<a\s+[^>]*class=["'][^"']*\bbigChar\b[^"']*["'][^>]*href=["']\/Comic\/([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i,
-			);
-			if (detailMatch) {
-				const slug = this._normalizeComicSlug(detailMatch[1]);
-				const title = (detailMatch[2] || "")
-					.replace(/<[^>]+>/g, "")
-					.replace(/&amp;/g, "&")
-					.replace(/&#39;/g, "'")
-					.replace(/&quot;/g, '"')
-					.replace(/&lt;/g, "<")
-					.replace(/&gt;/g, ">")
-					.replace(/\s+/g, " ")
-					.trim();
-				const coverMatch =
-					html.match(/<link\s+rel=["']image_src["']\s+href=["']([^"']+)["']/i) ||
-					html.match(/<img\s+[^>]*(?:width=["']190px["'][^>]*height=["']250px["']|height=["']250px["'][^>]*width=["']190px["'])[^>]*src=["']([^"']+)["']/i);
-				const coverPath = coverMatch ? coverMatch[1] : "";
-				const cover = coverPath
-					? coverPath.startsWith("/")
-						? this._baseUrl + coverPath
-						: coverPath
-					: "";
-
-				if (slug) {
-					items.push({
-						id: slug,
-						title: title || slug.replace(/-/g, " "),
-						author: "Unknown",
-						cover,
-						url: `${this._baseUrl}/Comic/${slug}`,
-						format: "comics",
-						extra: { slug: slug },
-					});
-				}
-			}
-		}
-
-		if (items.length === 0) {
-			const issueMatch = html.match(/href=["']\/Comic\/([^\/"']+)\/[^"']+["']/i);
-			if (issueMatch) {
-				const slug = this._normalizeComicSlug(issueMatch[1]);
-				const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-				let title = titleMatch
-					? titleMatch[1]
-							.replace(/<[^>]+>/g, "")
-							.replace(/&amp;/g, "&")
-							.replace(/&#39;/g, "'")
-							.replace(/&quot;/g, '"')
-							.replace(/&lt;/g, "<")
-							.replace(/&gt;/g, ">")
-							.replace(/\s+/g, " ")
-							.trim()
-					: "";
-				title = title
-					.replace(/\s+comic\s*\|\s*Read[\s\S]*$/i, "")
-					.replace(/\s+comic\s+online[\s\S]*$/i, "")
-					.trim();
-				const coverMatch = html.match(
-					/<link\s+rel=["']image_src["']\s+href=["']([^"']+)["']/i,
-				);
-				const coverPath = coverMatch ? coverMatch[1] : "";
-				const cover = coverPath
-					? coverPath.startsWith("/")
-						? this._baseUrl + coverPath
-						: coverPath
-					: "";
-
-				if (slug) {
-					items.push({
-						id: slug,
-						title: title || slug.replace(/-/g, " "),
-						author: "Unknown",
-						cover,
-						url: `${this._baseUrl}/Comic/${slug}`,
-						format: "comics",
-						extra: { slug: slug },
-					});
-				}
-			}
-		}
-
-		return items;
-	},
-
-	_buildSearchQueries(query) {
-		const raw = String(query || "").trim();
-		if (!raw) return [];
-
-		const queries = [];
-		const seen = {};
-
-		function add(value) {
+		const fallbackQueries = [];
+		const seenQueries = {};
+		function addQuery(value) {
 			const text = String(value || "").replace(/\s+/g, " ").trim();
 			const key = text.toLowerCase();
-			if (!text || seen[key]) return;
-			seen[key] = true;
-			queries.push(text);
+			if (!text || key === rawQuery.toLowerCase() || seenQueries[key]) return;
+			seenQueries[key] = true;
+			fallbackQueries.push(text);
 		}
 
-		const normalized = raw
+		const normalized = rawQuery
 			.replace(/[’']/g, "")
 			.replace(/[“”"]/g, "")
 			.replace(/[:;,.!?()[\]{}]/g, " ")
 			.replace(/[–—]/g, "-")
 			.replace(/\s+/g, " ")
 			.trim();
+		addQuery(normalized);
+		addQuery(rawQuery.split(":")[0]);
+		addQuery(normalized.split(/\s+-\s+/)[0]);
 
-		add(raw);
-		add(normalized);
+		for (let i = 0; i < fallbackQueries.length; i++) {
+			const items = await fetchSearch(fallbackQueries[i]);
+			if (items.length > 0) return this._sortSearchResults(rawQuery, items);
+		}
 
-		const beforeColon = raw.split(":")[0];
-		if (beforeColon && beforeColon !== raw) add(beforeColon);
-
-		const beforeDash = normalized.split(/\s+-\s+/)[0];
-		if (beforeDash && beforeDash !== normalized) add(beforeDash);
-
-		const tokens = normalized
-			.split(/\s+/)
-			.map((token) => token.trim())
-			.filter(Boolean)
-			.filter((token) => !/^(the|a|an|and|or|of|to|in|on|for|with)$/i.test(token));
-
-		if (tokens.length >= 3) add(tokens.slice(0, 3).join(" "));
-		if (tokens.length >= 2) add(tokens.slice(0, 2).join(" "));
-
-		return queries;
+		return [];
 	},
+
+	// ── Search helpers ───────────────────────────────
 
 	_sortSearchResults(query, items) {
 		const queryTokens = this._normalizeSearchText(query)
@@ -286,7 +229,7 @@ __cinderExport = {
 		const url = `${baseUrl}/Comic/${comicSlug}`;
 		const res = await cinder.fetch(url, {
 			headers: {
-				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
+				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
 				"Accept": "text/html",
 			},
 		});
