@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.16",
+	version: "1.0.17",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "comics",
@@ -333,6 +333,7 @@ __cinderExport = {
 		const res = await cinder.fetch(url, { headers });
 		if (res.status !== 200 || !res.data) return [];
 
+		const imageProxyBase = getImageProxyBase(res.data);
 		const pages = [];
 		const seen = {};
 
@@ -352,7 +353,13 @@ __cinderExport = {
 
 			const isPageHost =
 				/(^|\.)bp\.blogspot\.com$/.test(host) ||
-				/(^|\.)googleusercontent\.com$/.test(host);
+				/(^|\.)googleusercontent\.com$/.test(host) ||
+				(imageProxyBase &&
+					host ===
+						imageProxyBase
+							.replace(/^https?:\/\//i, "")
+							.split("/")[0]
+							.toLowerCase());
 			if (!isPageHost) return false;
 
 			if (path.includes("/content/") || path.includes("/uploads/")) return false;
@@ -403,6 +410,11 @@ __cinderExport = {
 			}
 		}
 
+		function getImageProxyBase(html) {
+			const match = html.match(/func[A-Za-z0-9_]*\([^,]+,\s*['"](https?:\/\/[^'"]+)['"]\)/);
+			return match ? match[1].replace(/\/+$/, "") : "";
+		}
+
 		function decodeRcoPath(value, eTokens) {
 			let current = replaceETokens(value, eTokens)
 				.replace(/b/g, "pw_.g28x")
@@ -425,7 +437,8 @@ __cinderExport = {
 
 			decoded = decoded.substring(0, 13) + decoded.substring(17);
 			decoded = decoded.substring(0, decoded.length - 2) + (s0Index > 0 ? "=s0" : "=s1600");
-			return "https://2.bp.blogspot.com/" + decoded + query;
+			const imageHost = imageProxyBase || "https://2.bp.blogspot.com";
+			return imageHost + "/" + decoded + query;
 		}
 
 		// Current RCO pages embed obfuscated image paths in pth assignments.
