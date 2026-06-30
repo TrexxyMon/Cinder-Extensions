@@ -26,6 +26,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **OceanofPDF** | Books | Download-source extension with separate EPUB/PDF results and POST form downloads. |
 | **ReadNovelEU** | Books | Search and read chaptered web novels from the current WuxiaWorld destination. |
 | **WebNovel** | Books | Search and read public chaptered web novels from WebNovel; locked chapters are not bypassed. |
+| **Witch Cult Translations** | Books/Webnovels | Read public chaptered Re:Zero web novel fan translations and package arcs into EPUB on device. |
 | **ReadComicsOnline** | Comics | Search, read, and download comics from ReadComicsOnline. |
 | **WeebCentral** | Manga | Search, read, and download manga from WeebCentral. Credit to Theoenogo for building this extension. |
 | **WEBTOON** | Manga/Comics | Search public WEBTOON Originals and Canvas titles and read web-visible episodes as long-strip chapters. |
