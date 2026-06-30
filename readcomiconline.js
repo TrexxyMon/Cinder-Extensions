@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.17",
+	version: "1.0.19",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "comics",
@@ -273,6 +273,10 @@ __cinderExport = {
 			const key = normalizedPath.toLowerCase();
 			if (!slug || seen[key]) return;
 			seen[key] = true;
+			const pageCacheSafePath =
+				normalizedPath +
+				(normalizedPath.includes("?") ? "&" : "?") +
+				"rcoPageFix=19";
 
 			const title = decodeHtml(rawText) || labelFromSlug(slug);
 			const numberMatch = slug.match(/(?:Issue|TPB|Chapter|Part|Annual|Special)-?(\d+(?:-\d+)?)/i);
@@ -281,10 +285,10 @@ __cinderExport = {
 				: String(chapters.length + 1);
 
 			chapters.push({
-				id: normalizedPath,
+				id: pageCacheSafePath,
 				title,
 				chapter,
-				url: baseUrl + normalizedPath,
+				url: baseUrl + pageCacheSafePath,
 			});
 		}
 
@@ -334,6 +338,10 @@ __cinderExport = {
 		if (res.status !== 200 || !res.data) return [];
 
 		const imageProxyBase = getImageProxyBase(res.data);
+		const imageHeaders = {
+			"User-Agent": headers["User-Agent"],
+			"Referer": this._baseUrl + "/",
+		};
 		const pages = [];
 		const seen = {};
 
@@ -341,7 +349,7 @@ __cinderExport = {
 			src = (src || "").trim();
 			if (!src || seen[src] || !isValidPageImage(src)) return;
 			seen[src] = true;
-			pages.push({ url: src });
+			pages.push({ url: src, headers: imageHeaders });
 		}
 
 		function isValidPageImage(src) {
