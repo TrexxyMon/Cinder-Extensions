@@ -19,6 +19,8 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **Asura Scans** | Manga | Read manga, manhwa, and manhua from Asura Scans. |
 | **Atsumaru** | Manga | Read manga, manhwa, manhua, and OEL from Atsumaru. |
 | **MangaDex** | Manga | Search manga from MangaDex.org, a free community-run manga platform. |
+| **MangaK** | Manga | Read manga, manhwa, and manhua from MangaK. No debrid required. |
+| **MangaKakalot** | Manga | Read manga, manhwa, and manhua from MangaKakalot. No debrid required. |
 | **OPDS Catalog** | Books | Connect to your OPDS-compatible server, including Komga, Kavita, Calibre-web, and COPS. |
 | **Anna's Archive** | Books | Direct downloader powered entirely by your device; no backend infrastructure. |
 | **LibGen** | Books | Direct download-source extension with on-device link resolution. |

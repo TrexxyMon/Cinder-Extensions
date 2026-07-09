@@ -53,6 +53,40 @@
       ]
     },
     {
+      "id": "mangak",
+      "name": "MangaK",
+      "version": "0.1.2-cinder",
+      "description": "Read manga, manhwa, and manhua from MangaK. No debrid required.",
+      "contentType": "manga",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/mangak.js",
+      "minCinderVersion": "2.0.0",
+      "contentTypes": [
+        "manga"
+      ],
+      "contentSubtypes": [
+        "manga",
+        "manhwa",
+        "manhua"
+      ]
+    },
+    {
+      "id": "mangakakalot",
+      "name": "MangaKakalot",
+      "version": "0.1.5-cinder",
+      "description": "Read manga, manhwa, and manhua from MangaKakalot. No debrid required.",
+      "contentType": "manga",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/mangakakalot.js",
+      "minCinderVersion": "2.0.0",
+      "contentTypes": [
+        "manga"
+      ],
+      "contentSubtypes": [
+        "manga",
+        "manhwa",
+        "manhua"
+      ]
+    },
+    {
       "id": "readcomiconline",
       "name": "ReadComicOnline",
       "version": "1.0.19",
