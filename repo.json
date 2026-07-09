@@ -85,6 +85,23 @@
       ]
     },
     {
+      "id": "comickfan",
+      "name": "ComicK Fanmade",
+      "version": "0.1.1-cinder",
+      "description": "Read manga, manhwa, and manhua from ComicK Fanmade. No debrid required.",
+      "contentType": "manga",
+      "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/comickfan.js",
+      "minCinderVersion": "2.0.0",
+      "contentTypes": [
+        "manga"
+      ],
+      "contentSubtypes": [
+        "manga",
+        "manhwa",
+        "manhua"
+      ]
+    },
+    {
       "id": "webtoons",
       "name": "WEBTOON",
       "version": "0.1.0-cinder",

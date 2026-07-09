@@ -31,6 +31,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **Witch Cult Translations** | Books/Webnovels | Read public chaptered Re:Zero web novel fan translations and package arcs into EPUB on device. |
 | **ReadComicsOnline** | Comics | Search, read, and download comics from ReadComicsOnline. |
 | **WeebCentral** | Manga | Search, read, and download manga from WeebCentral. Credit to Theoenogo for building this extension. |
+| **ComicK Fanmade** | Manga | Read manga, manhwa, and manhua from ComicK Fanmade. No debrid required. |
 | **WEBTOON** | Manga/Comics | Search public WEBTOON Originals and Canvas titles and read web-visible episodes as long-strip chapters. |
 | **DownMagaz** | Magazines | Search, read, and download magazines from downmagaz.net. Credit to Tonynks for building much of this extension. |
 | **GoComics** | Comics | Read daily comic strips from GoComics, Comics Kingdom, ComicsRSS, and more. Credit to Tonynks for the source extension. |
