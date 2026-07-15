@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.3",
+	version: "0.1.4",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
@@ -162,8 +162,20 @@ __cinderExport = {
 	},
 
 	_detectFormat: function(text) {
-		var match = this._clean(text).toLowerCase().match(/\b(epub|pdf|cbz|cbr|mobi|azw3|fb2)\b/);
-		return match ? match[1] : "epub";
+		var match = this._clean(text).toLowerCase().match(/\b(epub|pdf|cbz|cbr|mobi|azw3?|fb2|djvu|txt|rtf|docx?)\b/);
+		return match ? match[1] : "";
+	},
+
+	_supportedFormat: function(format) {
+		var clean = this._clean(format).toLowerCase().replace(/^\./, "");
+		return /^(epub|pdf|cbz|cbr)$/.test(clean) ? clean : "";
+	},
+
+	_detectSupportedFormat: function(text, url) {
+		var detected = this._supportedFormat(this._detectFormat(text));
+		if (detected) return detected;
+		var urlMatch = this._clean(url).toLowerCase().match(/\.(epub|pdf|cbz|cbr)(?:[?#]|$)/);
+		return urlMatch ? urlMatch[1] : "";
 	},
 
 	_renderTemplate: function(template, values) {
@@ -278,9 +290,13 @@ __cinderExport = {
 			headers = headers || {};
 			headers["X-Cinder-Expect-Interstitial"] = "1";
 		}
+		var format = this._supportedFormat(item && item.format);
+		if (!format) {
+			throw new Error("LibGen result is not a supported Cinder format.");
+		}
 		return {
 			url: url,
-			fileName: this._clean(item.title || "download") + "." + (item.format || "epub"),
+			fileName: this._clean(item.title || "download") + "." + format,
 			headers: headers,
 			downloadRequest: useBrowser ? { method: "GET", useBrowser: true } : undefined,
 		};
@@ -307,11 +323,15 @@ __cinderExport = {
 		var doc = cinder.parseHTML(html);
 		var formDownload = await this._extractFormDownload(doc, pageUrl, baseUrl);
 		if (formDownload) {
-			formDownload.fileName = this._clean(item.title || "download") + "." + (item.format || "epub");
+			var formFormat = this._supportedFormat(item && item.format);
+			if (!formFormat) {
+				throw new Error("LibGen result is not a supported Cinder format.");
+			}
+			formDownload.fileName = this._clean(item.title || "download") + "." + formFormat;
 			return formDownload;
 		}
 
-		return this._resolvedDownload(item, pageUrl, referer, true);
+		throw new Error("LibGen did not expose a direct ebook file URL for this result.");
 	},
 
 	_placeholderDetailUrl: async function(id, format) {
@@ -363,10 +383,11 @@ __cinderExport = {
 				var pages = this._clean(cells[5].text());
 				var sizeLink = cells[6].querySelector("a[href]");
 				var size = this._clean(cells[6].text());
-				var format = this._detectFormat(cells[7].text());
 				var mirrorCell = cells[8] || null;
 				var sizeHref = sizeLink ? sizeLink.attr("href") : "";
 				var titleHref = titleLink ? titleLink.attr("href") : "";
+				var format = this._detectSupportedFormat(cells[7].text(), sizeHref || titleHref);
+				if (!format) continue;
 				var sourceMd5 = this._firstMd5FromLinks(mirrorCell) || this._md5FromUrl(sizeHref) || this._md5FromUrl(titleHref);
 				var fileId = this._fileIdFromUrl(sizeHref);
 				var detailId = this._fileIdFromUrl(titleHref);
@@ -429,9 +450,6 @@ __cinderExport = {
 					this._firstText(node, ["[data-title]", ".title", ".book-title", "h1", "h2", "h3", "a"]);
 				var author = this._attr(node, "data-author") ||
 					this._firstText(node, ["[data-author]", ".author", ".book-author"]);
-				var size = this._attr(node, "data-size") ||
-					this._firstText(node, ["[data-size]", ".size", ".file-size"]);
-				var format = this._attr(node, "data-format") || this._detectFormat(node.text());
 				var cover = this._attr(node, "data-cover") ||
 					this._firstAttr(node, ["img"], ["data-src", "src"]);
 				var directUrl = this._attr(node, "data-direct-url") ||
@@ -439,6 +457,11 @@ __cinderExport = {
 				var detailUrl = this._attr(node, "data-url") ||
 					this._attr(node, "data-detail-url") ||
 					this._firstAttr(node, ["a[href]"], ["href"]);
+				var size = this._attr(node, "data-size") ||
+					this._firstText(node, ["[data-size]", ".size", ".file-size"]);
+				var format = this._supportedFormat(this._attr(node, "data-format")) ||
+					this._detectSupportedFormat(node.text(), directUrl || detailUrl);
+				if (!format) continue;
 
 				detailUrl = this._absUrl(baseUrl, detailUrl);
 				directUrl = this._absUrl(baseUrl, directUrl);
@@ -589,7 +612,11 @@ __cinderExport = {
 
 		var formDownload = await this._extractFormDownload(doc, pageUrl, baseUrl);
 		if (formDownload) {
-			formDownload.fileName = this._clean(item.title || "download") + "." + (item.format || "epub");
+			var formFormat = this._supportedFormat(item && item.format);
+			if (!formFormat) {
+				throw new Error("LibGen result is not a supported Cinder format.");
+			}
+			formDownload.fileName = this._clean(item.title || "download") + "." + formFormat;
 			return formDownload;
 		}
 
