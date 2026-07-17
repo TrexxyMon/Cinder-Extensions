@@ -2,7 +2,7 @@ var ComicHubFree = {};
 
 ComicHubFree.id = "comichubfree";
 ComicHubFree.name = "ComicHubFree";
-ComicHubFree.version = "0.1.5-cinder";
+ComicHubFree.version = "0.1.6-cinder";
 ComicHubFree.icon = "CHF";
 ComicHubFree.description = "Read western comics from ComicHubFree.";
 ComicHubFree.contentType = "comics";
@@ -93,6 +93,23 @@ ComicHubFree._fetchText = async function(url, headers, options) {
   options = options || {};
   var requestHeaders = headers || this._headers();
   var res = null;
+  var html = "";
+  var browserHeaders = Object.assign({}, requestHeaders, {
+    "X-Cinder-Suppress-Interactive": "1",
+    "X-Cinder-Min-Wait-Ms": String(options.browserMinWait || 1400),
+    "X-Cinder-Max-Wait-Ms": String(options.browserMaxWait || 12000),
+    "X-Cinder-Wake-Page": "1",
+  });
+  function isBlocked(response, body) {
+    return !response || response.status < 200 || response.status >= 300 || !body || /cloudflare|just a moment|checking your browser|forbidden/i.test(body);
+  }
+  if (options.browserFirst !== false && cinder.fetchBrowser) {
+    try {
+      res = await cinder.fetchBrowser(url, { headers: browserHeaders });
+      html = res && res.data ? String(res.data || "") : "";
+      if (!isBlocked(res, html)) return html;
+    } catch (browserError) {}
+  }
   try {
     res = await cinder.fetch(url, {
       headers: requestHeaders,
@@ -101,25 +118,14 @@ ComicHubFree._fetchText = async function(url, headers, options) {
   } catch (error) {
     res = null;
   }
-  var html = res && res.data ? String(res.data || "") : "";
-  var blocked = !res || res.status < 200 || res.status >= 300 || !html || /cloudflare|just a moment|checking your browser|forbidden/i.test(html);
-  if (blocked && cinder.fetchBrowser) {
+  html = res && res.data ? String(res.data || "") : "";
+  if (isBlocked(res, html) && options.browserFirst === false && cinder.fetchBrowser) {
     try {
-      res = await cinder.fetchBrowser(url, {
-        headers: Object.assign({}, requestHeaders, {
-          "X-Cinder-Suppress-Interactive": "1",
-          "X-Cinder-Min-Wait-Ms": "1400",
-          "X-Cinder-Max-Wait-Ms": String(options.browserMaxWait || 12000),
-          "X-Cinder-Wake-Page": "1",
-        }),
-      });
+      res = await cinder.fetchBrowser(url, { headers: browserHeaders });
       html = res && res.data ? String(res.data || "") : "";
-      blocked = !res || res.status < 200 || res.status >= 300 || !html || /cloudflare|just a moment|checking your browser|forbidden/i.test(html);
-    } catch (browserError) {
-      blocked = true;
-    }
+    } catch (browserError) {}
   }
-  if (blocked) {
+  if (isBlocked(res, html)) {
     throw new Error("ComicHubFree request failed for " + url);
   }
   return html;
@@ -265,20 +271,40 @@ ComicHubFree.search = async function(query, page) {
   }
 
   var results = [];
+  var firstLetter = (normalizedQuery.match(/[a-z0-9]/) || [""])[0];
+  if (firstLetter) {
+    var listPath = "/comic-list?c=" + encodeURIComponent(firstLetter);
+    if (pageNumber > 1) listPath += "&page=" + pageNumber;
+    try {
+      merge(results, this._parseList(await this._fetchText(this.BASE_URL + listPath, undefined, {
+        timeout: 12000,
+        browserMaxWait: 12000,
+      })));
+    } catch (listError) {}
+    if (results.length > 0) return results;
+  }
+
   var searchUrl = this.BASE_URL + "/search-comic?key=" + encodeURIComponent(queryText) + "&page=" + pageNumber;
   try {
-    merge(results, this._parseList(await this._fetchText(searchUrl)));
+    merge(results, this._parseList(await this._fetchText(searchUrl, undefined, {
+      timeout: 12000,
+      browserMaxWait: 12000,
+    })));
   } catch (searchError) {}
   if (results.length > 0) return results;
 
   var fallbackPaths = [
+    pageNumber > 1 ? "/new-comic/page/" + pageNumber : "/new-comic",
     pageNumber > 1 ? "/hot-comic/page/" + pageNumber : "/hot-comic",
     pageNumber > 1 ? "/comic-updates/page/" + pageNumber : "/comic-updates",
     pageNumber > 1 ? "/page/" + pageNumber : "/",
   ];
   for (var i = 0; i < fallbackPaths.length; i++) {
     try {
-      merge(results, this._parseList(await this._fetchText(this.BASE_URL + fallbackPaths[i])));
+      merge(results, this._parseList(await this._fetchText(this.BASE_URL + fallbackPaths[i], undefined, {
+        timeout: 12000,
+        browserMaxWait: 12000,
+      })));
     } catch (fallbackError) {}
   }
   return results;
