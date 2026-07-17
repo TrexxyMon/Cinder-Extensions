@@ -2,7 +2,7 @@ var ComicHubFree = {};
 
 ComicHubFree.id = "comichubfree";
 ComicHubFree.name = "ComicHubFree";
-ComicHubFree.version = "0.1.2-cinder";
+ComicHubFree.version = "0.1.3-cinder";
 ComicHubFree.icon = "CHF";
 ComicHubFree.description = "Read western comics from ComicHubFree.";
 ComicHubFree.contentType = "comics";
@@ -90,14 +90,38 @@ ComicHubFree._pathFromUrl = function(value) {
 };
 
 ComicHubFree._fetchText = async function(url, headers) {
-  var res = await cinder.fetch(url, {
-    headers: headers || this._headers(),
-    timeout: 30000,
-  });
-  if (!res || res.status < 200 || res.status >= 300 || !res.data) {
+  var requestHeaders = headers || this._headers();
+  var res = null;
+  try {
+    res = await cinder.fetch(url, {
+      headers: requestHeaders,
+      timeout: 30000,
+    });
+  } catch (error) {
+    res = null;
+  }
+  var html = res && res.data ? String(res.data || "") : "";
+  var blocked = !res || res.status < 200 || res.status >= 300 || !html || /cloudflare|just a moment|checking your browser|forbidden/i.test(html);
+  if (blocked && cinder.fetchBrowser) {
+    try {
+      res = await cinder.fetchBrowser(url, {
+        headers: Object.assign({}, requestHeaders, {
+          "X-Cinder-Suppress-Interactive": "1",
+          "X-Cinder-Min-Wait-Ms": "1400",
+          "X-Cinder-Max-Wait-Ms": "12000",
+          "X-Cinder-Wake-Page": "1",
+        }),
+      });
+      html = res && res.data ? String(res.data || "") : "";
+      blocked = !res || res.status < 200 || res.status >= 300 || !html || /cloudflare|just a moment|checking your browser|forbidden/i.test(html);
+    } catch (browserError) {
+      blocked = true;
+    }
+  }
+  if (blocked) {
     throw new Error("ComicHubFree request failed for " + url);
   }
-  return String(res.data || "");
+  return html;
 };
 
 ComicHubFree._imageFromHtml = function(html) {
