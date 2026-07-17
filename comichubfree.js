@@ -2,7 +2,7 @@ var ComicHubFree = {};
 
 ComicHubFree.id = "comichubfree";
 ComicHubFree.name = "ComicHubFree";
-ComicHubFree.version = "0.1.5-cinder";
+ComicHubFree.version = "0.1.4-cinder";
 ComicHubFree.icon = "CHF";
 ComicHubFree.description = "Read western comics from ComicHubFree.";
 ComicHubFree.contentType = "comics";
@@ -89,14 +89,13 @@ ComicHubFree._pathFromUrl = function(value) {
   }
 };
 
-ComicHubFree._fetchText = async function(url, headers, options) {
-  options = options || {};
+ComicHubFree._fetchText = async function(url, headers) {
   var requestHeaders = headers || this._headers();
   var res = null;
   try {
     res = await cinder.fetch(url, {
       headers: requestHeaders,
-      timeout: options.timeout || 30000,
+      timeout: 30000,
     });
   } catch (error) {
     res = null;
@@ -109,7 +108,7 @@ ComicHubFree._fetchText = async function(url, headers, options) {
         headers: Object.assign({}, requestHeaders, {
           "X-Cinder-Suppress-Interactive": "1",
           "X-Cinder-Min-Wait-Ms": "1400",
-          "X-Cinder-Max-Wait-Ms": String(options.browserMaxWait || 12000),
+          "X-Cinder-Max-Wait-Ms": "12000",
           "X-Cinder-Wake-Page": "1",
         }),
       });
@@ -242,13 +241,6 @@ ComicHubFree.search = async function(query, page) {
   var queryText = String(query || "").trim();
   var pageNumber = (page || 0) + 1;
   var normalizedQuery = queryText.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  if (normalizedQuery === "test") {
-    var testHtml = await this._fetchText(this.BASE_URL + (pageNumber > 1 ? "/comic-updates/page/" + pageNumber : "/comic-updates"), undefined, {
-      timeout: 6000,
-      browserMaxWait: 6000,
-    });
-    return this._parseList(testHtml).slice(0, 10);
-  }
   function matches(item) {
     if (!normalizedQuery) return true;
     var title = String(item && item.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
