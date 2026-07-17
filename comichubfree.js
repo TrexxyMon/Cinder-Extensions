@@ -2,7 +2,7 @@ var ComicHubFree = {};
 
 ComicHubFree.id = "comichubfree";
 ComicHubFree.name = "ComicHubFree";
-ComicHubFree.version = "0.1.3-cinder";
+ComicHubFree.version = "0.1.4-cinder";
 ComicHubFree.icon = "CHF";
 ComicHubFree.description = "Read western comics from ComicHubFree.";
 ComicHubFree.contentType = "comics";
@@ -185,37 +185,51 @@ ComicHubFree._numberFromText = function(value) {
 ComicHubFree._parseList = function(html) {
   var results = [];
   var seen = {};
+  function pushItem(url, title, cover, self) {
+    var path = self._pathFromUrl(url);
+    if (!/^\/comic\//i.test(path) || seen[path]) return;
+    seen[path] = true;
+    results.push({
+      id: path,
+      title: title || self._titleFromPath(path),
+      author: "Various",
+      cover: cover || "",
+      coverHeaders: cover ? self._imageHeaders(url) : undefined,
+      url: self._absUrl(path),
+      format: "comics",
+      contentType: "comics",
+      contentTypes: ["comic"],
+    });
+  }
+
   var re = /<div[^>]+class=["'][^"']*\bcartoon-box\b[^"']*["'][\s\S]*?(?=<div[^>]+class=["'][^"']*\bcartoon-box\b|<ul[^>]+class=["'][^"']*\bpagination\b|<\/main>|<\/section>|$)/gi;
   var match;
   while ((match = re.exec(html)) !== null) {
     var block = match[0];
-    if (block.indexOf("detail") === -1) continue;
     var linkMatch =
       block.match(/<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*\bimage\b[^"']*["'][\s\S]*?>/i) ||
       block.match(/<a[^>]+class=["'][^"']*\bimage\b[^"']*["'][^>]+href=["']([^"']+)["'][\s\S]*?>/i) ||
       block.match(/<a[^>]+href=["']([^"']*\/comic\/[^"']+)["'][\s\S]*?>/i);
     if (!linkMatch) continue;
     var url = this._absUrl(linkMatch[1]);
-    var path = this._pathFromUrl(url);
-    if (!path || seen[path]) continue;
-    seen[path] = true;
-
     var title = this._stripTags((block.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i) || [])[1]);
     if (!title) title = this._decode(this._attr((block.match(/<img[\s\S]*?>/i) || [])[0], "alt"));
-    if (!title) title = this._titleFromPath(path);
-    var imgTag = (block.match(/<img[\s\S]*?>/i) || [])[0] || "";
-    var cover = this._imageFromHtml(imgTag);
-    results.push({
-      id: path,
-      title: title,
-      author: "Various",
-      cover: cover,
-      coverHeaders: cover ? this._imageHeaders(url) : undefined,
-      url: url,
-      format: "comics",
-      contentType: "comics",
-    });
+    var cover = this._imageFromHtml((block.match(/<img[\s\S]*?>/i) || [])[0] || "");
+    pushItem(url, title, cover, this);
   }
+
+  var anchorRe = /<a[^>]+href=["']([^"']*\/comic\/[^"'#?]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  while ((match = anchorRe.exec(html)) !== null) {
+    var anchorHtml = match[0];
+    var label = this._stripTags(match[2]);
+    if (!label || /read now|follow|view more|latest|previous|next/i.test(label)) continue;
+    var href = this._absUrl(match[1]);
+    var nearby = html.slice(Math.max(0, match.index - 800), Math.min(html.length, anchorRe.lastIndex + 800));
+    var imgTag = (nearby.match(/<img[\s\S]*?>/i) || [])[0] || "";
+    var coverUrl = this._imageFromHtml(imgTag);
+    pushItem(href, label, coverUrl, this);
+  }
+
   return results;
 };
 
@@ -224,10 +238,42 @@ ComicHubFree._hasNextPage = function(html) {
 };
 
 ComicHubFree.search = async function(query, page) {
-  page = (page || 0) + 1;
-  var url = this.BASE_URL + "/search-comic?key=" + encodeURIComponent(String(query || "").trim()) + "&page=" + page;
-  var html = await this._fetchText(url);
-  return this._parseList(html);
+  var queryText = String(query || "").trim();
+  var pageNumber = (page || 0) + 1;
+  var normalizedQuery = queryText.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  function matches(item) {
+    if (!normalizedQuery) return true;
+    var title = String(item && item.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    return title.indexOf(normalizedQuery) >= 0 || normalizedQuery.indexOf(title) >= 0;
+  }
+  function merge(target, items) {
+    var seen = {};
+    target.forEach(function(item) { if (item && item.id) seen[item.id] = true; });
+    (items || []).forEach(function(item) {
+      if (!item || !item.id || seen[item.id] || !matches(item)) return;
+      seen[item.id] = true;
+      target.push(item);
+    });
+  }
+
+  var results = [];
+  var searchUrl = this.BASE_URL + "/search-comic?key=" + encodeURIComponent(queryText) + "&page=" + pageNumber;
+  try {
+    merge(results, this._parseList(await this._fetchText(searchUrl)));
+  } catch (searchError) {}
+  if (results.length > 0) return results;
+
+  var fallbackPaths = [
+    pageNumber > 1 ? "/hot-comic/page/" + pageNumber : "/hot-comic",
+    pageNumber > 1 ? "/comic-updates/page/" + pageNumber : "/comic-updates",
+    pageNumber > 1 ? "/page/" + pageNumber : "/",
+  ];
+  for (var i = 0; i < fallbackPaths.length; i++) {
+    try {
+      merge(results, this._parseList(await this._fetchText(this.BASE_URL + fallbackPaths[i])));
+    } catch (fallbackError) {}
+  }
+  return results;
 };
 
 ComicHubFree.getDiscoverSections = async function() {
@@ -239,8 +285,8 @@ ComicHubFree.getDiscoverSections = async function() {
 
 ComicHubFree.getDiscoverItems = async function(sectionId, page) {
   var pageNumber = (page || 0) + 1;
-  var path = sectionId === "latest" ? "/new-comic" : "/popular-comic";
-  var html = await this._fetchText(this.BASE_URL + path + "?page=" + pageNumber);
+  var path = sectionId === "latest" ? "/comic-updates" : "/hot-comic";
+  var html = await this._fetchText(this.BASE_URL + path + (pageNumber > 1 ? "/page/" + pageNumber : ""));
   return this._parseList(html);
 };
 
