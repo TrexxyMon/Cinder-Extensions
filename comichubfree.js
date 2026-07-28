@@ -2,7 +2,7 @@ var ComicHubFree = {};
 
 ComicHubFree.id = "comichubfree";
 ComicHubFree.name = "ComicHubFree";
-ComicHubFree.version = "0.1.2-cinder";
+ComicHubFree.version = "0.1.3-cinder";
 ComicHubFree.icon = "CHF";
 ComicHubFree.description = "Read western comics from ComicHubFree.";
 ComicHubFree.contentType = "comics";
@@ -108,42 +108,78 @@ ComicHubFree._imageFromHtml = function(html) {
   return this._absUrl(dataSrc) || this._absUrl(dataOriginal) || this._absUrl(dataLazy) || this._absUrl(src);
 };
 
-ComicHubFree._isLiveImage = async function(url, headers) {
+ComicHubFree._isPageImageCandidate = function(tag, url, chapterUrl) {
+  var path = this._pathFromUrl(url).toLowerCase();
+  if (!path || !/\.(?:avif|gif|jpe?g|png|webp)$/i.test(path)) return false;
+  if (
+    path.indexOf("/images/site/") !== -1 ||
+    /(?:^|\/)(?:ajaxloader|favicon|icon|loading|logo|placeholder)[^/]*\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(path)
+  ) {
+    return false;
+  }
+
+  var chapterPath = this._pathFromUrl(chapterUrl)
+    .replace(/\/all\/?$/i, "")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+  var belongsToChapter = chapterPath && path.indexOf(chapterPath + "/") === 0;
+  var numericPagePath = /\/\d+\/\d+\.(?:avif|gif|jpe?g|png|webp)$/i.test(path);
+  var alt = this._attr(tag, "alt");
+  var itemProp = this._attr(tag, "itemprop");
+  var identifiedAsPage = /\bpage\s*#?\s*\d+\b/i.test(alt) && /contenturl/i.test(itemProp);
+
+  return (belongsToChapter && numericPagePath) || identifiedAsPage;
+};
+
+ComicHubFree._probeImage = async function(url, headers) {
   try {
     var res = await cinder.fetch(url, {
       method: "HEAD",
       headers: headers,
       timeout: 8000,
     });
-    if (!res || res.status === 0) return true;
-    if (res.status < 200 || res.status >= 300) return false;
+    if (!res || res.status === 0) return "unknown";
+    if (res.status === 404 || res.status === 410) return "dead";
+    if (res.status < 200 || res.status >= 300) return "unknown";
     var contentType = "";
     var responseHeaders = res.headers || {};
     Object.keys(responseHeaders).forEach(function(key) {
       if (key.toLowerCase() === "content-type") contentType = String(responseHeaders[key] || "");
     });
-    return !contentType || /^image\//i.test(contentType);
+    if (contentType && !/^image\//i.test(contentType)) return "dead";
+    return "live";
   } catch (error) {
-    return true;
+    return "unknown";
   }
 };
 
 ComicHubFree._filterLivePages = async function(pages) {
   var filtered = [];
+  var deadCount = 0;
+  var unknownCount = 0;
   var batchSize = 6;
   for (var i = 0; i < pages.length; i += batchSize) {
     var batch = pages.slice(i, i + batchSize);
     var checks = await Promise.all(batch.map(async function(page) {
       return {
         page: page,
-        live: await ComicHubFree._isLiveImage(page.url, page.headers),
+        state: await ComicHubFree._probeImage(page.url, page.headers),
       };
     }));
     checks.forEach(function(result) {
-      if (result.live) filtered.push(result.page);
+      if (result.state === "dead") {
+        deadCount += 1;
+        return;
+      }
+      if (result.state === "unknown") unknownCount += 1;
+      filtered.push(result.page);
     });
   }
-  return filtered;
+  return {
+    pages: filtered,
+    deadCount: deadCount,
+    unknownCount: unknownCount,
+  };
 };
 
 ComicHubFree._titleFromPath = function(path) {
@@ -303,17 +339,27 @@ ComicHubFree.getPages = async function(chapterId) {
   var imgRe = /<img[^>]+class=["'][^"']*\bchapter_img\b[^"']*["'][\s\S]*?>/gi;
   var match;
   while ((match = imgRe.exec(html)) !== null) {
-    var src = this._imageFromHtml(match[0]);
-    if (!src || seen[src]) continue;
+    var tag = match[0];
+    var src = this._imageFromHtml(tag);
+    if (!src || seen[src] || !this._isPageImageCandidate(tag, src, chapterUrl)) continue;
     seen[src] = true;
     pages.push({
       url: src,
       headers: this._imageHeaders(allUrl),
     });
   }
-  pages = await this._filterLivePages(pages);
-  if (pages.length === 0) throw new Error("ComicHubFree returned no pages for this chapter.");
-  return pages;
+  if (pages.length === 0) {
+    throw new Error("ComicHubFree did not expose any valid page images for this issue.");
+  }
+
+  var validation = await this._filterLivePages(pages);
+  if (validation.pages.length === 0 && validation.deadCount > 0) {
+    throw new Error("ComicHubFree lists this issue, but its page image files are missing on the source site.");
+  }
+  if (validation.pages.length === 0) {
+    throw new Error("ComicHubFree returned no readable pages for this issue.");
+  }
+  return validation.pages;
 };
 
 ComicHubFree.getSettings = function() {
