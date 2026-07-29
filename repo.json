@@ -344,6 +344,21 @@
                                                ]
                        },
                        {
+                           "id":  "batcave",
+                           "name":  "BatCave",
+                           "version":  "0.2.0-cinder",
+                           "description":  "Read western comics from BatCave. No debrid required.",
+                           "contentType":  "comics",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/batcave.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "comic"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "westernComic"
+                                               ]
+                       },
+                       {
                            "id":  "bbato",
                            "name":  "BBato",
                            "version":  "1.0.3-cinder",
