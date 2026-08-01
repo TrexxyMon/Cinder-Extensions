@@ -4,7 +4,7 @@
 __cinderExport = {
 	id: "weebcentral",
 	name: "WeebCentral",
-	version: "1.0.6",
+	version: "1.0.7",
 	icon: "ðŸ“š",
 	description: "Read manga, manhwa, and manhua from WeebCentral.com",
 	contentType: "manga",
@@ -257,7 +257,7 @@ __cinderExport = {
 
 		const rows = this._matchAll(
 			html,
-			'href="https://weebcentral\\.com/chapters/([A-Z0-9]{20,})"[^>]*>([\\s\\S]*?)<\\/a>',
+			"href=[\"'](?:https?:\\/\\/(?:www\\.)?weebcentral\\.com)?\\/chapters\\/([A-Z0-9]{20,})[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/a>",
 			"gi"
 		);
 
