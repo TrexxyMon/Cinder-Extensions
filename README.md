@@ -32,6 +32,8 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **Novel Fire** | Books/Webnovels | Search public chaptered web novels and build EPUBs on device. No debrid required. |
 | **WebNovel** | Books | Search and read public chaptered web novels from WebNovel; locked chapters are not bypassed. |
 | **Witch Cult Translations** | Books/Webnovels | Read public chaptered Re:Zero web novel fan translations and package arcs into EPUB on device. |
+| **Luminare Translations** | Books/Webnovels | Search public light novels, load rich metadata and covers, and build available chapters with illustrations into EPUB. No debrid required. |
+| **BronsTL** | Books/Webnovels | Search public light novels, load metadata and covers, and build available chapters with illustrations into EPUB. No debrid required. |
 | **ReadComicsOnline** | Comics | Search, read, and download comics from ReadComicsOnline. |
 | **WeebCentral** | Manga | Search, read, and download manga from WeebCentral. Credit to Theoenogo for building this extension. |
 | **ComicK Fanmade** | Manga | Read manga, manhwa, and manhua from ComicK Fanmade. No debrid required. |
