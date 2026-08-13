@@ -34,10 +34,13 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **Witch Cult Translations** | Books/Webnovels | Read public chaptered Re:Zero web novel fan translations and package arcs into EPUB on device. |
 | **Luminare Translations** | Books/Webnovels | Search public light novels, load rich metadata and covers, and build available chapters with illustrations into EPUB. No debrid required. |
 | **BronsTL** | Books/Webnovels | Search public light novels, load metadata and covers, and build available chapters with illustrations into EPUB. No debrid required. |
+| **Literotica** | Books/Webnovels | Search adult fiction and build public stories into EPUB on device. No debrid required. |
 | **ReadComicsOnline** | Comics | Search, read, and download comics from ReadComicsOnline. |
+| **ReadAllComics** | Comics | Search and read western comics with chaptered image pages. No debrid required. |
 | **WeebCentral** | Manga | Search, read, and download manga from WeebCentral. Credit to Theoenogo for building this extension. |
 | **ComicK Fanmade** | Manga | Read manga, manhwa, and manhua from ComicK Fanmade. No debrid required. |
 | **WEBTOON** | Manga/Comics | Search public WEBTOON Originals and Canvas titles and read web-visible episodes as long-strip chapters. |
+| **FreeMagazines.top** | Magazines | Search and browse PDF magazines with on-device link resolution. No debrid required. |
 | **DownMagaz** | Magazines | Search, read, and download magazines from downmagaz.net. Credit to Tonynks for building much of this extension. |
 | **GoComics** | Comics | Read daily comic strips from GoComics, Comics Kingdom, ComicsRSS, and more. Credit to Tonynks for the source extension. |
 | **ComicHubFree** | Comics | Search and read western comics from ComicHubFree. |
