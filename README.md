@@ -40,7 +40,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **WeebCentral** | Manga | Search, read, and download manga from WeebCentral. Credit to Theoenogo for building this extension. |
 | **ComicK Fanmade** | Manga | Read manga, manhwa, and manhua from ComicK Fanmade. No debrid required. |
 | **WEBTOON** | Manga/Comics | Search public WEBTOON Originals and Canvas titles and read web-visible episodes as long-strip chapters. |
-| **FreeMagazines.top** | Magazines | Search and browse PDF magazines with on-device link resolution. No debrid required. |
+| **FreeMagazines.top** | Magazines | Search and browse PDF magazines with on-device link resolution and preserved title and cover metadata. No debrid required. |
 | **DownMagaz** | Magazines | Search, read, and download magazines from downmagaz.net. Credit to Tonynks for building much of this extension. |
 | **GoComics** | Comics | Read daily comic strips from GoComics, Comics Kingdom, ComicsRSS, and more. Credit to Tonynks for the source extension. |
 | **ComicHubFree** | Comics | Search and read western comics from ComicHubFree. |

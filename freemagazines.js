@@ -2,7 +2,7 @@ var FreeMagazinesSource = {};
 
 FreeMagazinesSource.id = "freemagazines";
 FreeMagazinesSource.name = "FreeMagazines.top";
-FreeMagazinesSource.version = "1.1.8-cinder";
+FreeMagazinesSource.version = "1.1.9-cinder";
 FreeMagazinesSource.icon = "\uD83D\uDCF0";
 FreeMagazinesSource.description = "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.";
 FreeMagazinesSource.contentType = "magazine";
@@ -65,6 +65,45 @@ FreeMagazinesSource._headers = function() {
 	};
 };
 
+FreeMagazinesSource._coverHeaders = function(pageUrl) {
+	return {
+		"User-Agent": this._headers()["User-Agent"],
+		"Referer": pageUrl || this.BASE_URL + "/",
+	};
+};
+
+FreeMagazinesSource._absoluteUrl = function(value, baseUrl) {
+	var raw = this._normalizeUrl(value);
+	if (!raw || /^data:/i.test(raw)) return "";
+	if (/^\/\//.test(raw)) return "https:" + raw;
+	if (/^https?:\/\//i.test(raw)) return raw;
+	try {
+		return cinder.resolveUrl(raw, baseUrl || this.BASE_URL + "/");
+	} catch (err) {
+		return "";
+	}
+};
+
+FreeMagazinesSource._imageUrlFromNode = function(image, baseUrl) {
+	if (!image) return "";
+	var raw = image.attr("data-src")
+		|| image.attr("data-lazy-src")
+		|| image.attr("src")
+		|| "";
+	if (!raw || /^data:/i.test(raw)) {
+		var srcset = image.attr("data-srcset") || image.attr("srcset") || "";
+		var choices = String(srcset).split(",");
+		for (var i = choices.length - 1; i >= 0; i--) {
+			var candidate = String(choices[i] || "").trim().split(/\s+/)[0];
+			if (candidate && !/^data:/i.test(candidate)) {
+				raw = candidate;
+				break;
+			}
+		}
+	}
+	return this._absoluteUrl(raw, baseUrl);
+};
+
 FreeMagazinesSource._decode = function(text) {
 	if (!text) return "";
 	return String(text)
@@ -102,39 +141,136 @@ FreeMagazinesSource._parseListings = function(html) {
 	var self = this;
 	var results = [];
 	var seen = {};
-	var doc = cinder.parseHTML(html || "");
+	var sourceHtml = String(html || "");
+	var doc = cinder.parseHTML(sourceHtml);
 
-	doc.querySelectorAll("h2 a").forEach(function(link) {
-		var href = link.attr("href") || "";
+	var addResult = function(link, card) {
+		if (!link) return;
+		var href = self._absoluteUrl(link.attr("href") || "", self.BASE_URL + "/");
 		if (!href || href.indexOf(self.BASE_URL) !== 0) return;
 		if (href.indexOf("/category/") >= 0 || href.indexOf("/page/") >= 0 || href.indexOf("/wp-") >= 0) return;
 		if (seen[href]) return;
-		seen[href] = true;
 
 		var title = self._decode(link.text());
 		if (!title) return;
 
 		var cover = "";
-		var pos = html.indexOf(href);
-		if (pos >= 0) {
-			var chunk = html.substring(Math.max(0, pos - 1400), pos + 700);
-			var imgMatch = chunk.match(/https:\/\/freemagazines\.top\/wp-content\/uploads\/[^"'<>\s]+\.(?:webp|jpg|jpeg|png)/i);
-			if (imgMatch) cover = imgMatch[0];
+		var description = "";
+		if (card) {
+			var image = card.querySelector(".post-image img, img.wp-post-image, img");
+			cover = self._imageUrlFromNode(image, href);
+			var summary = card.querySelector(".entry-summary, .post-excerpt, .excerpt");
+			description = summary ? self._decode(summary.text()) : "";
 		}
+		if (!cover) {
+			var rawHref = link.attr("href") || href;
+			var pos = sourceHtml.indexOf(rawHref);
+			if (pos >= 0) {
+				var chunk = sourceHtml.substring(Math.max(0, pos - 2200), pos + 1000);
+				var imgMatch = chunk.match(/(?:https?:)?\/\/freemagazines\.top\/wp-content\/uploads\/[^"'<>\s]+\.(?:webp|jpg|jpeg|png|gif)/i);
+				if (imgMatch) cover = self._absoluteUrl(imgMatch[0], href);
+			}
+		}
+
+		seen[href] = true;
+		var coverHeaders = cover ? self._coverHeaders(href) : undefined;
 
 		results.push({
 			id: href,
 			title: title,
-			author: "Magazine",
 			cover: cover,
+			coverHeaders: coverHeaders,
 			url: href,
 			format: "pdf",
 			source: self.name,
-			extra: { articleUrl: href },
+			extra: {
+				articleUrl: href,
+				coverHeaders: coverHeaders,
+				description: description || undefined,
+			},
 		});
+	};
+
+	doc.querySelectorAll("article").forEach(function(card) {
+		addResult(card.querySelector("h2.entry-title a, h2 a"), card);
+	});
+
+	// Preserve compatibility with older/minimal listing layouts that omit article cards.
+	doc.querySelectorAll("h2 a").forEach(function(link) {
+		addResult(link, null);
 	});
 
 	return results;
+};
+
+FreeMagazinesSource._metaValue = function(doc, name) {
+	if (!doc || !name) return "";
+	var node = doc.querySelector("meta[property='" + name + "']")
+		|| doc.querySelector("meta[name='" + name + "']");
+	return node ? this._decode(node.attr("content") || "") : "";
+};
+
+FreeMagazinesSource._articleMetadata = function(html, pageUrl) {
+	var doc = cinder.parseHTML(html || "");
+	var titleNode = doc.querySelector("h1.entry-title, article h1, h1");
+	var title = titleNode ? this._decode(titleNode.text()) : this._metaValue(doc, "og:title");
+	title = String(title || "")
+		.replace(/\s*[|\-]\s*Free\s*Magazines(?:\.top)?\s*$/i, "")
+		.trim();
+
+	var cover = this._absoluteUrl(this._metaValue(doc, "og:image"), pageUrl);
+	if (!cover) {
+		cover = this._imageUrlFromNode(
+			doc.querySelector("article .post-image img, article img.wp-post-image, .entry-content img"),
+			pageUrl,
+		);
+	}
+
+	var description = this._metaValue(doc, "og:description")
+		|| this._metaValue(doc, "description");
+	if (!description) {
+		var summary = doc.querySelector("article .entry-summary, article .entry-content p, .entry-content p");
+		description = summary ? this._decode(summary.text()) : "";
+	}
+
+	var genres = [];
+	var seenGenres = {};
+	doc.querySelectorAll("article a[rel='category tag'], article .cat-links a, article .entry-meta a[href*='/category/'], article .entry-footer a[href*='/category/']").forEach(function(link) {
+		var genre = String(link.text ? link.text() : "").replace(/\s+/g, " ").trim();
+		var key = genre.toLowerCase();
+		if (genre && !seenGenres[key]) {
+			seenGenres[key] = true;
+			genres.push(genre);
+		}
+	});
+
+	return {
+		title: title,
+		cover: cover,
+		description: description,
+		genres: genres,
+	};
+};
+
+FreeMagazinesSource.getBookDetails = async function(bookId) {
+	var pageUrl = this._absoluteUrl(bookId, this.BASE_URL + "/");
+	if (!pageUrl) throw new Error("No magazine article URL.");
+	var response = await cinder.fetch(pageUrl, {
+		headers: this._headers(),
+		timeout: 20000,
+	});
+	if (!response || response.status !== 200) {
+		throw new Error("Magazine details request failed (HTTP " + (response ? response.status : 0) + ").");
+	}
+	var metadata = this._articleMetadata(response.data || "", pageUrl);
+	return {
+		id: pageUrl,
+		title: metadata.title,
+		cover: metadata.cover,
+		coverHeaders: metadata.cover ? this._coverHeaders(pageUrl) : undefined,
+		description: metadata.description,
+		genres: metadata.genres,
+	};
 };
 
 FreeMagazinesSource._normalizeLimeWireUrl = function(value, baseUrl) {
@@ -181,6 +317,55 @@ FreeMagazinesSource._extractLimeWireUrl = function(html, baseUrl) {
 		if (direct) return direct;
 	}
 	return "";
+};
+
+FreeMagazinesSource._extractMaskedDownloadKey = function(html) {
+	var source = String(html || "");
+	var doc = cinder.parseHTML(source);
+	var trigger = doc.querySelector("#lw-vk-js-trigger[data-key], .lw-vk-download-btn[data-key], [data-key^='dl_key_']");
+	var key = trigger ? String(trigger.attr("data-key") || "").trim() : "";
+	if (!key) {
+		var match = source.match(/data-key=["']([A-Za-z0-9_-]{8,256})["']/i);
+		key = match ? match[1] : "";
+	}
+	return /^[A-Za-z0-9_-]{8,256}$/.test(key) ? key : "";
+};
+
+FreeMagazinesSource._resolveMaskedDownloadUrl = async function(pageUrl, html) {
+	var key = this._extractMaskedDownloadKey(html);
+	if (!key) return "";
+	var response = await cinder.fetch(this.BASE_URL + "/wp-admin/admin-ajax.php", {
+		method: "POST",
+		headers: {
+			"User-Agent": this._headers()["User-Agent"],
+			"Accept": "application/json, text/javascript, */*; q=0.01",
+			"Accept-Language": "en-US,en;q=0.9",
+			"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+			"Origin": this.BASE_URL,
+			"Referer": pageUrl,
+			"X-Requested-With": "XMLHttpRequest",
+		},
+		body: "action=get_masked_download&download_key=" + encodeURIComponent(key),
+		timeout: 20000,
+	});
+	if (!response || response.status !== 200) {
+		cinder.warn("[FreeMagazines] Masked download request failed with status " + (response ? response.status : 0));
+		return "";
+	}
+	try {
+		var payload = JSON.parse(response.data || "{}");
+		var value = payload && payload.success && payload.data
+			? (typeof payload.data === "string" ? payload.data : payload.data.url)
+			: "";
+		return this._absoluteUrl(value, pageUrl);
+	} catch (err) {
+		cinder.warn("[FreeMagazines] Masked download response was not valid JSON.");
+		return "";
+	}
+};
+
+FreeMagazinesSource._isDirectFileUrl = function(url) {
+	return /\.(?:pdf|epub|cbz|cbr)(?:[?#]|$)/i.test(String(url || ""));
 };
 
 FreeMagazinesSource._getHeader = function(headers, name) {
@@ -483,25 +668,55 @@ FreeMagazinesSource.resolve = async function(item) {
 	});
 
 	var html = article && article.data ? article.data : "";
-	var limeUrl = this._extractLimeWireUrl(html, pageUrl);
+	var downloadUrl = this._extractLimeWireUrl(html, pageUrl);
+	if (!downloadUrl) {
+		downloadUrl = await this._resolveMaskedDownloadUrl(pageUrl, html);
+	}
 
-	if (!limeUrl) {
-		cinder.log("[FreeMagazines] LimeWire link not in static HTML; trying browser-rendered article page.");
+	if (!downloadUrl) {
+		cinder.log("[FreeMagazines] Download data not in static HTML; trying browser-rendered article page.");
 		var browserArticle = await cinder.fetchBrowser(pageUrl, {
 			headers: Object.assign({}, this._headers(), {
 				"X-Cinder-Suppress-Interactive": "1",
-				"X-Cinder-Min-Wait-Ms": "8000",
-				"X-Cinder-Max-Wait-Ms": "16000",
+				"X-Cinder-Min-Wait-Ms": "3000",
+				"X-Cinder-Max-Wait-Ms": "10000",
 				"X-Cinder-Wake-Page": "1",
 			}),
 		});
 		html = browserArticle && browserArticle.data ? browserArticle.data : "";
-		limeUrl = this._extractLimeWireUrl(html, pageUrl);
+		downloadUrl = this._extractLimeWireUrl(html, pageUrl);
+		if (!downloadUrl) {
+			downloadUrl = await this._resolveMaskedDownloadUrl(pageUrl, html);
+		}
 	}
 
-	if (!limeUrl) throw new Error("No LimeWire download link found on the magazine page.");
+	if (!downloadUrl) throw new Error("No download link found on the magazine page.");
 
 	var fileName = this._slugToFileName(item && item.title);
+	var limeUrl = this._normalizeLimeWireUrl(downloadUrl, pageUrl);
+	if (!limeUrl && this._isDirectFileUrl(downloadUrl)) {
+		return {
+			url: downloadUrl,
+			fileName: fileName,
+			headers: this._coverHeaders(pageUrl),
+		};
+	}
+	if (!limeUrl) {
+		return {
+			url: downloadUrl,
+			fileName: fileName,
+			headers: Object.assign({}, this._coverHeaders(pageUrl), {
+				"X-Cinder-Expect-Interstitial": "1",
+			}),
+			downloadRequest: {
+				method: "GET",
+				useBrowser: true,
+				browserClickDownload: true,
+				browserCaptureBlob: true,
+				browserMaxWaitMs: 90000,
+			},
+		};
+	}
 
 	cinder.log("[FreeMagazines] Resolving LimeWire route data: " + limeUrl);
 	var limePage = await cinder.fetch(limeUrl, {
@@ -516,10 +731,6 @@ FreeMagazinesSource.resolve = async function(item) {
 	var limeHtml = limePage && limePage.data ? limePage.data : "";
 	if (this._isLimeWireUnavailable(limeHtml)) {
 		throw new Error("The magazine host link is no longer available.");
-	}
-	var routeDownload = this._extractLimeWireDownloadRequest(limeHtml);
-	if (routeDownload && routeDownload.fileName) {
-		fileName = this._slugToFileName(routeDownload.fileName.replace(/\.(?:pdf|epub|cbz|cbr)$/i, ""));
 	}
 
 	cinder.log("[FreeMagazines] Using browser click capture for LimeWire download: " + limeUrl);
