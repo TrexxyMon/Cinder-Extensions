@@ -23,6 +23,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **MangaKakalot** | Manga | Read manga, manhwa, and manhua from MangaKakalot. No debrid required. |
 | **OPDS Catalog** | Books | Connect to your OPDS-compatible server, including Komga, Kavita, Calibre-web, and COPS. |
 | **Anna's Archive** | Books | Direct downloader powered entirely by your device; no backend infrastructure. |
+| **Z-Library** | Books | Search, discover, and download ebooks through your Z-Library account. Created by Stick. |
 | **Bookracy** | Books | Search and download ebooks, comics, and manga from Bookracy's open library API. |
 | **LibGen** | Books | Direct download-source extension with on-device link resolution. |
 | **ElScione Server** | Books/Manga/Webnovels | Search an h5ai ebook and manga server for EPUB, PDF, CBZ, and CBR files. |

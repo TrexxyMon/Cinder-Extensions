@@ -389,6 +389,20 @@
                            "excludeFromDefaultMetadataProviders":  true
                        },
                        {
+                           "id":  "zlibrary",
+                           "name":  "Z-Library",
+                           "version":  "1.1.1",
+                           "description":  "Search, discover, and download ebooks through your Z-Library account.",
+                           "icon":  "book-outline",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/zlibrary.js",
+                           "minCinderVersion":  "1.0.0",
+                           "contentTypes":  [
+                                                "ebook"
+                                            ],
+                           "excludeFromDefaultMetadataProviders":  true
+                       },
+                       {
                            "id":  "oceanofpdf",
                            "name":  "OceanofPDF",
                            "version":  "0.1.3",
