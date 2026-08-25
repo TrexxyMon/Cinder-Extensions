@@ -2,7 +2,7 @@ var FreeMagazinesSource = {};
 
 FreeMagazinesSource.id = "freemagazines";
 FreeMagazinesSource.name = "FreeMagazines.top";
-FreeMagazinesSource.version = "1.1.9-cinder";
+FreeMagazinesSource.version = "1.2.0-cinder";
 FreeMagazinesSource.icon = "\uD83D\uDCF0";
 FreeMagazinesSource.description = "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.";
 FreeMagazinesSource.contentType = "magazine";
@@ -293,7 +293,7 @@ FreeMagazinesSource._normalizeLimeWireUrl = function(value, baseUrl) {
 		var decoded = this._decodeBase64Url(encoded);
 		if (decoded) return this._normalizeLimeWireUrl(decoded, baseUrl);
 	}
-	var match = raw.match(/https?:\/\/(?:www\.)?limewire\.com\/d\/[A-Za-z0-9]+(?:#[A-Za-z0-9_\-]+)?/i);
+	var match = raw.match(/https?:\/\/(?:www\.)?limewire\.com\/d\/[A-Za-z0-9_-]+(?:#[A-Za-z0-9_-]+)?/i);
 	if (!match) return "";
 	return this._normalizeUrl(match[0].replace(/:\/\/www\.limewire\.com\//i, "://limewire.com/"));
 };
