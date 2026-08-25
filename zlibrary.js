@@ -15,7 +15,7 @@ var Zlibrary = {};
 
 Zlibrary.id = "zlibrary";
 Zlibrary.name = "Z-Library";
-Zlibrary.version = "1.1.1";
+Zlibrary.version = "1.2.0";
 Zlibrary.icon = "book-outline";
 Zlibrary.description = "Search, discover, and download ebooks through your Z-Library account.";
 
@@ -53,6 +53,12 @@ Zlibrary.getSettings = function () {
       type: "text",
       defaultValue: "z-library.ec",
       placeholder: "z-library.ec, z-lib.gd, z-lib.gl",
+    },
+    {
+      id: "langues",
+      label: "Preferred Languages",
+      type: "text",
+      placeholder: "french, english - blank means all languages",
     },
     { id: "email", label: "Email Address", type: "text", placeholder: "you@example.com" },
     { id: "motdepasse", label: "Password", type: "password", placeholder: "Your Z-Library password" },
@@ -242,19 +248,66 @@ Zlibrary.LIMITE = 30;
  * Un livre sans `hash` est ecarte : resolve() ne saurait pas le demander, et le laisser
  * passer donnerait une fiche qui echoue seulement au moment du telechargement.
  */
+Zlibrary.LANGUAGE_ALIASES = {
+  fr: "french",
+  francais: "french",
+  "français": "french",
+  en: "english",
+  anglais: "english",
+  es: "spanish",
+  espagnol: "spanish",
+  de: "german",
+  allemand: "german",
+  it: "italian",
+  italien: "italian",
+  pt: "portuguese",
+  portugais: "portuguese",
+  ru: "russian",
+  russe: "russian",
+  ja: "japanese",
+  japonais: "japanese",
+  zh: "chinese",
+  chinois: "chinese",
+};
+
+Zlibrary._languages = async function () {
+  var raw = await this._lire("langues", false);
+  if (!raw) return [];
+  var self = this;
+  return raw.split(/[,;]/).map(function (value) {
+    var normalized = value.trim().toLowerCase();
+    return self.LANGUAGE_ALIASES[normalized] || normalized;
+  }).filter(Boolean);
+};
+
+// Older Cinder builds group extension results by title. Keep editions visible there
+// while newer builds use the stable result id and show these fields separately.
+Zlibrary._distinctTitle = function (book) {
+  var title = String(book.title || "Untitled").trim();
+  var details = [];
+  if (book.language) details.push(String(book.language).trim());
+  if (book.extension) details.push(String(book.extension).toLowerCase().trim());
+  if (book.filesizeString) details.push(String(book.filesizeString).trim());
+  return details.length ? title + " — " + details.join(" · ") : title;
+};
+
 Zlibrary._versResultats = function (livres) {
   return (livres || []).filter(function (b) { return b && b.id && b.hash; }).map(function (b) {
     return {
       // Identite STABLE : Cinder la memorise pour la bibliotheque et la reprise.
       id: "zlibrary:" + b.id,
-      title: String(b.title || "Untitled").trim(),
+      title: Zlibrary._distinctTitle(b),
       author: String(b.author || "").trim() || undefined,
       cover: b.cover || undefined,
       description: b.description || undefined,
       format: String(b.extension || "").toLowerCase() || undefined,
       size: b.filesizeString || undefined,
       source: Zlibrary.name,
-      extra: { livreId: String(b.id), hash: String(b.hash || "") },
+      extra: {
+        livreId: String(b.id),
+        hash: String(b.hash || ""),
+        language: b.language ? String(b.language).trim() : undefined,
+      },
     };
   });
 };
@@ -287,10 +340,14 @@ Zlibrary.search = async function (query, page) {
     : { "Accept": "application/json, text/javascript, */*; q=0.01", "User-Agent": this.UA, "Referer": base + "/" };
   enTetes["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
 
+  var fields = { message: q, page: p, limit: this.LIMITE };
+  var languages = await this._languages();
+  for (var i = 0; i < languages.length; i++) fields["languages[" + i + "]"] = languages[i];
+
   var j = await this._appel(base + "/eapi/book/search", {
     method: "POST",
     headers: enTetes,
-    body: this._form({ message: q, page: p, limit: this.LIMITE }),
+    body: this._form(fields),
     timeout: 30000,
   }, "search");
 
