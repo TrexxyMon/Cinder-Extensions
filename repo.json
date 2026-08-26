@@ -503,7 +503,7 @@
                        {
                            "id":  "freemagazines",
                            "name":  "FreeMagazines.top",
-                           "version":  "1.2.0-cinder",
+                           "version":  "1.2.1-cinder",
                            "description":  "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.",
                            "contentType":  "magazine",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/freemagazines.js",
