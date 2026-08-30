@@ -2,7 +2,7 @@ var ComicKFan = {};
 
 ComicKFan.id = "comickfan";
 ComicKFan.name = "ComicK Fanmade";
-ComicKFan.version = "0.1.1-cinder";
+ComicKFan.version = "0.1.2-cinder";
 ComicKFan.icon = "CK";
 ComicKFan.description = "Read manga, manhwa, and manhua from ComicK Fanmade. No debrid required.";
 ComicKFan.contentType = "manga";
@@ -210,14 +210,19 @@ ComicKFan.search = async function(query, page) {
     return [{
       id: slug,
       title: details.title,
+      author: details.author,
       cover: details.cover,
       coverHeaders: details.coverHeaders,
+      description: details.description,
       url: this.BASE_URL + "/manga/" + encodeURIComponent(slug),
       source: this.name,
       format: "manga",
       contentType: "manga",
       contentTypes: ["manga"],
       contentSubtypes: ["manga"],
+      extra: {
+        description: details.description,
+      },
     }];
   }
   var html = await this._fetchText(this._advancedSearchUrl(q, (page || 0) + 1, "", ""), {
@@ -377,6 +382,9 @@ ComicKFan.getDiscoverItems = async function(sectionId, page) {
 ComicKFan.getSettings = function() {
   return [];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+ComicKFan.getBookDetails = ComicKFan.getMangaDetails;
 
 var _cinderExport = ComicKFan;
 __cinderExport = ComicKFan;

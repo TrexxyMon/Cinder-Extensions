@@ -4,7 +4,7 @@
 __cinderExport = {
 	id: "webtoons",
 	name: "WEBTOON",
-	version: "0.1.0-cinder",
+	version: "0.1.1-cinder",
 	icon: "W",
 	description: "Read public, web-visible WEBTOON Originals and Canvas episodes.",
 	contentType: "manga",
@@ -310,3 +310,6 @@ __cinderExport = {
 		return pages;
 	},
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+__cinderExport.getBookDetails = __cinderExport.getMangaDetails;

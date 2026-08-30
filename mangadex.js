@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "mangadex",
 	name: "MangaDex",
-	version: "1.0.9",
+	version: "1.0.10",
 	icon: "ðŸ“–",
 	description: "Search manga from MangaDex.org â€” free, community-run manga platform",
 	contentType: "manga",
@@ -159,6 +159,7 @@ __cinderExport = {
 				title: title,
 				author: author,
 				cover: this._getCoverUrl(manga.id, null, coverFileName),
+				description: description || undefined,
 				url: manga.id,
 				format: "manga",
 				extra: {
@@ -217,6 +218,10 @@ __cinderExport = {
 				attrs.title?.["ja-ro"] ||
 				Object.values(attrs.title || {})[0] ||
 				"Unknown Title";
+			const description =
+				attrs.description?.en ||
+				Object.values(attrs.description || {})[0] ||
+				"";
 
 			const coverFileName = this._getCoverFileName(manga.relationships);
 			const author = this._getAuthorName(manga.relationships);
@@ -226,8 +231,17 @@ __cinderExport = {
 				title: title,
 				author: author,
 				cover: this._getCoverUrl(manga.id, null, coverFileName),
+				description: description || undefined,
 				url: manga.id,
 				format: "manga",
+				extra: {
+					description: description || undefined,
+					status: attrs.status,
+					year: attrs.year,
+					tags: (attrs.tags || [])
+						.map((t) => t.attributes?.name?.en)
+						.filter(Boolean),
+				},
 			});
 		}
 
@@ -379,4 +393,7 @@ __cinderExport = {
 		];
 	}
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+__cinderExport.getBookDetails = __cinderExport.getMangaDetails;
 

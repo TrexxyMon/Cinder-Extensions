@@ -15,7 +15,7 @@ var Zlibrary = {};
 
 Zlibrary.id = "zlibrary";
 Zlibrary.name = "Z-Library";
-Zlibrary.version = "1.2.0";
+Zlibrary.version = "1.2.1";
 Zlibrary.icon = "book-outline";
 Zlibrary.description = "Search, discover, and download ebooks through your Z-Library account.";
 
@@ -307,6 +307,7 @@ Zlibrary._versResultats = function (livres) {
         livreId: String(b.id),
         hash: String(b.hash || ""),
         language: b.language ? String(b.language).trim() : undefined,
+        description: b.description || undefined,
       },
     };
   });

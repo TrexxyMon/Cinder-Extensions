@@ -2,7 +2,7 @@ var BronsTLSource = {};
 
 BronsTLSource.id = "bronstl";
 BronsTLSource.name = "BronsTL";
-BronsTLSource.version = "0.1.0-cinder";
+BronsTLSource.version = "0.1.1-cinder";
 BronsTLSource.icon = "BT";
 BronsTLSource.description = "Search public BronsTL light novels and build available chapters into EPUB on device. No debrid required.";
 BronsTLSource.contentType = "books";
@@ -141,6 +141,7 @@ BronsTLSource._bookUrl = function(slug) {
 
 BronsTLSource._mapBook = function(book) {
 	var chapterCount = Number(book.chapters_count || book.total_chapters || 0);
+	var description = this._text(book.description);
 	return {
 		id: String(book.slug || book.id),
 		title: this._text(book.title) || "Untitled BronsTL novel",
@@ -150,8 +151,9 @@ BronsTLSource._mapBook = function(book) {
 		format: "epub",
 		size: chapterCount ? chapterCount + " chapters" : "",
 		source: "BronsTL",
+		description: description || undefined,
 		extra: {
-			description: this._text(book.description),
+			description: description || undefined,
 			illustrator: this._text(book.illustrator),
 			status: book.status && book.status.name,
 			epubFile: book.epub_file || undefined,

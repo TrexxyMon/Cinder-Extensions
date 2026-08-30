@@ -1,7 +1,7 @@
 __cinderExport = {
     id: "webnovel",
     name: "WebNovel",
-    version: "0.1.2-cinder",
+    version: "0.1.3-cinder",
     icon: "WN",
     description: "Search and read public chaptered web novels from WebNovel. Locked chapters are not bypassed.",
     contentType: "books",
@@ -162,6 +162,7 @@ __cinderExport = {
         var title = this._decode(item.bookName || item.name || item.title || bookId);
         var author = this._decode(item.authorName || item.author || "");
         var chapterCount = item.totalChapterNum || item.chapterNum || item.totalChapterCount || 0;
+        var description = this._decode(item.description || "");
         return {
             id: bookId,
             title: title,
@@ -171,9 +172,10 @@ __cinderExport = {
             format: "epub",
             size: chapterCount ? String(chapterCount) + " chapters" : "",
             source: "WebNovel",
+            description: description || undefined,
             extra: {
                 bookId: bookId,
-                description: this._decode(item.description || ""),
+                description: description || undefined,
                 category: this._decode(item.categoryName || ""),
                 rating: item.totalScore || item.score || "",
                 tags: item.tagInfo || item.tagInfos || [],

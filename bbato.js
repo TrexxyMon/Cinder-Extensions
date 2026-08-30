@@ -2,7 +2,7 @@
 
 BBato.id = "bbato";
 BBato.name = "BBato";
-BBato.version = "1.0.3-cinder";
+BBato.version = "1.0.4-cinder";
 BBato.icon = "BB";
 BBato.description = "Read manga, manhwa, and manhua from BBato.";
 BBato.contentType = "manga";
@@ -214,13 +214,16 @@ BBato.search = async function(query, page) {
     return [{
       id: details.id,
       title: details.title,
+      author: details.author,
       cover: details.cover,
       coverHeaders: details.coverHeaders,
+      description: details.description,
       url: this._absUrl(details.id),
       source: this.name,
       format: "manga",
       extra: {
         coverHeaders: details.coverHeaders,
+        description: details.description,
       },
     }];
   }
@@ -326,6 +329,9 @@ BBato.getPages = async function(chapterId) {
 BBato.getSettings = function() {
   return [];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+BBato.getBookDetails = BBato.getMangaDetails;
 
 __cinderExport = BBato;
 

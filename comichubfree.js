@@ -2,7 +2,7 @@ var ComicHubFree = {};
 
 ComicHubFree.id = "comichubfree";
 ComicHubFree.name = "ComicHubFree";
-ComicHubFree.version = "0.1.3-cinder";
+ComicHubFree.version = "0.1.4-cinder";
 ComicHubFree.icon = "CHF";
 ComicHubFree.description = "Read western comics from ComicHubFree.";
 ComicHubFree.contentType = "comics";
@@ -365,5 +365,8 @@ ComicHubFree.getPages = async function(chapterId) {
 ComicHubFree.getSettings = function() {
   return [];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+ComicHubFree.getBookDetails = ComicHubFree.getMangaDetails;
 
 __cinderExport = ComicHubFree;

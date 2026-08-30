@@ -4,7 +4,7 @@
 __cinderExport = {
 	id: "weebcentral",
 	name: "WeebCentral",
-	version: "1.0.7",
+	version: "1.0.8",
 	icon: "ðŸ“š",
 	description: "Read manga, manhwa, and manhua from WeebCentral.com",
 	contentType: "manga",
@@ -359,3 +359,6 @@ __cinderExport = {
 		];
 	},
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+__cinderExport.getBookDetails = __cinderExport.getMangaDetails;

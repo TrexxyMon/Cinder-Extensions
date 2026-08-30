@@ -2,7 +2,7 @@ var BatCave = {};
 
 BatCave.id = "batcave";
 BatCave.name = "BatCave";
-BatCave.version = "0.2.0-cinder";
+BatCave.version = "0.2.1-cinder";
 BatCave.icon = "BC";
 BatCave.description = "Read western comics from BatCave. No debrid required.";
 BatCave.contentType = "comics";
@@ -502,5 +502,8 @@ BatCave.getPages = async function(chapterId) {
 BatCave.getSettings = function() {
   return [];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+BatCave.getBookDetails = BatCave.getMangaDetails;
 
 __cinderExport = BatCave;

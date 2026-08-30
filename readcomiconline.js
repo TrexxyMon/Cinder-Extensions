@@ -10,7 +10,7 @@
 __cinderExport = {
 	id: "readcomiconline",
 	name: "ReadComicOnline",
-	version: "1.0.19",
+	version: "1.0.20",
 	icon: "📚",
 	description: "Read Marvel, DC, Image and more comics from ReadComicOnline",
 	contentType: "comics",
@@ -649,4 +649,7 @@ __cinderExport = {
 		return [];
 	},
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+__cinderExport.getBookDetails = __cinderExport.getMangaDetails;
 

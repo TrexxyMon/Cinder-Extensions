@@ -129,15 +129,20 @@ Bump the extension `version` whenever users need Cinder to detect an update.
   author: "Optional author",
   cover: "https://example.com/cover.jpg",
   coverHeaders: { Referer: "https://example.com/" },
+  description: "Optional synopsis or description",
   url: "https://example.com/file.epub",
   size: "12 MB",
   format: "epub",
   source: "My Source",
-  extra: { any: "metadata needed later" }
+  extra: {
+    description: "Optional synopsis or description",
+    any: "metadata needed later"
+  }
 }
 ```
 
 Use stable IDs. Cinder stores IDs for library entries, downloaded chapters, and resume behavior.
+When search or browse already includes a synopsis, publish it in both `description` and `extra.description`. Current Cinder uses the first-class field, while older APKs continue reading the legacy field. Do not remove `extra.description` from an existing extension while supported older APKs remain in use. If a fuller synopsis requires a detail-page request, also implement `getBookDetails(bookId)` or `getMangaDetails(mangaId)`; current Cinder loads it lazily only after the user selects that title.
 
 ### Downloads
 

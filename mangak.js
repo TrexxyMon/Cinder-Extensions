@@ -2,7 +2,7 @@ var MangaK = {};
 
 MangaK.id = "mangak";
 MangaK.name = "MangaK";
-MangaK.version = "0.1.2-cinder";
+MangaK.version = "0.1.3-cinder";
 MangaK.icon = "MK";
 MangaK.description = "Read manga, manhwa, and manhua from MangaK. No debrid required.";
 MangaK.contentType = "manga";
@@ -217,13 +217,14 @@ MangaK._resultFromItem = function(item) {
   if (!id || !slug) return null;
   var cover = this._absUrl(item.cover || "");
   var subtypes = this._subtypes(item);
+  var description = item.summary ? this._stripTags(item.summary) : undefined;
   return {
     id: "/" + slug + "#" + id,
     title: this._decode(item.name || slug.replace(/-/g, " ")),
     author: item.authors && Array.isArray(item.authors) ? item.authors.map(function(a) { return a.name; }).join(", ") : undefined,
     cover: cover || undefined,
     coverHeaders: cover ? this._imageHeaders(this.BASE_URL + "/" + slug) : undefined,
-    description: item.summary ? this._stripTags(item.summary) : undefined,
+    description: description,
     url: this.BASE_URL + "/" + slug,
     source: this.name,
     format: "manga",
@@ -233,6 +234,7 @@ MangaK._resultFromItem = function(item) {
     extra: {
       mangakId: id,
       slug: slug,
+      description: description,
     },
   };
 };
@@ -254,14 +256,19 @@ MangaK.search = async function(query, page) {
     return [{
       id: "/" + slug + (id ? "#" + id : ""),
       title: details.title,
+      author: details.author,
       cover: details.cover,
       coverHeaders: details.coverHeaders,
+      description: details.description,
       url: this.BASE_URL + "/" + slug,
       source: this.name,
       format: "manga",
       contentType: "manga",
       contentTypes: ["manga"],
       contentSubtypes: ["manga"],
+      extra: {
+        description: details.description,
+      },
     }];
   }
   var filtered = q.replace(/[^\p{L}\p{N} ]/gu, " ").trim().slice(0, 50);
@@ -443,6 +450,9 @@ MangaK.getDiscoverItems = async function(sectionId, page) {
 MangaK.getSettings = function() {
   return [];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+MangaK.getBookDetails = MangaK.getMangaDetails;
 
 __cinderExport = MangaK;
 if (typeof module !== "undefined") module.exports = MangaK;

@@ -2,7 +2,7 @@ var FreeMagazinesSource = {};
 
 FreeMagazinesSource.id = "freemagazines";
 FreeMagazinesSource.name = "FreeMagazines.top";
-FreeMagazinesSource.version = "1.2.2-cinder";
+FreeMagazinesSource.version = "1.2.3-cinder";
 FreeMagazinesSource.icon = "\uD83D\uDCF0";
 FreeMagazinesSource.description = "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.";
 FreeMagazinesSource.contentType = "magazine";
@@ -183,6 +183,7 @@ FreeMagazinesSource._parseListings = function(html) {
 			url: href,
 			format: "pdf",
 			source: self.name,
+			description: description || undefined,
 			extra: {
 				articleUrl: href,
 				coverHeaders: coverHeaders,

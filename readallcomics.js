@@ -2,7 +2,7 @@ var ReadAllComics = {};
 
 ReadAllComics.id = "readallcomics";
 ReadAllComics.name = "ReadAllComics";
-ReadAllComics.version = "0.1.3-cinder";
+ReadAllComics.version = "0.1.4-cinder";
 ReadAllComics.icon = "RAC";
 ReadAllComics.description = "Read western comics from ReadAllComics.";
 ReadAllComics.contentType = "comics";
@@ -407,6 +407,9 @@ ReadAllComics.getPages = async function(chapterId) {
 ReadAllComics.getSettings = function() {
   return [];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+ReadAllComics.getBookDetails = ReadAllComics.getMangaDetails;
 
 __cinderExport = ReadAllComics;
 

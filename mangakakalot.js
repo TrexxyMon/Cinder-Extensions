@@ -2,7 +2,7 @@ var MangaKakalot = {};
 
 MangaKakalot.id = "mangakakalot";
 MangaKakalot.name = "MangaKakalot";
-MangaKakalot.version = "0.1.5-cinder";
+MangaKakalot.version = "0.1.6-cinder";
 MangaKakalot.icon = "MK";
 MangaKakalot.description = "Read manga, manhwa, and manhua from MangaKakalot. No debrid required.";
 MangaKakalot.contentType = "manga";
@@ -308,12 +308,16 @@ MangaKakalot.search = async function(query, page) {
       author: details.author,
       cover: details.cover,
       coverHeaders: details.coverHeaders,
+      description: details.description,
       url: this.BASE_URL + "/manga/" + slug,
       source: this.name,
       format: "manga",
       contentType: "manga",
       contentTypes: ["manga"],
       contentSubtypes: ["manga"],
+      extra: {
+        description: details.description,
+      },
     }];
   }
   var searchword = this._slugify(q).replace(/-/g, "_");
@@ -537,6 +541,9 @@ MangaKakalot._parseListHtml = function(html) {
 MangaKakalot.getSettings = function() {
   return [];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+MangaKakalot.getBookDetails = MangaKakalot.getMangaDetails;
 
 __cinderExport = MangaKakalot;
 if (typeof module !== "undefined") module.exports = MangaKakalot;

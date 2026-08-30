@@ -2,7 +2,7 @@ var LuminareTranslationsSource = {};
 
 LuminareTranslationsSource.id = "luminaretranslations";
 LuminareTranslationsSource.name = "Luminare Translations";
-LuminareTranslationsSource.version = "0.1.0-cinder";
+LuminareTranslationsSource.version = "0.1.1-cinder";
 LuminareTranslationsSource.icon = "LT";
 LuminareTranslationsSource.description = "Search public Luminare light novels and build available chapters into EPUB on device. No debrid required.";
 LuminareTranslationsSource.contentType = "books";
@@ -151,6 +151,7 @@ LuminareTranslationsSource._fetchGenreNames = async function(ids) {
 
 LuminareTranslationsSource._mapSeries = function(item, cover) {
 	var meta = item && item.meta ? item.meta : {};
+	var description = this._text((item.excerpt && item.excerpt.rendered) || "");
 	return {
 		id: String(item.slug || item.id),
 		title: this._text(item && item.title && item.title.rendered) || "Untitled Luminare novel",
@@ -159,9 +160,10 @@ LuminareTranslationsSource._mapSeries = function(item, cover) {
 		url: item.link || this.BASE_URL + "/series/" + item.slug + "/",
 		format: "epub",
 		source: "Luminare Translations",
+		description: description || undefined,
 		extra: {
 			seriesId: item.id,
-			description: this._text((item.excerpt && item.excerpt.rendered) || ""),
+			description: description || undefined,
 			featuredMediaId: item.featured_media || undefined,
 		},
 	};

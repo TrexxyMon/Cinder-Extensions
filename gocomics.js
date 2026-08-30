@@ -4,7 +4,7 @@
 __cinderExport = {
   id: "gocomics",
   name: "GoComics",
-  version: "3.3.1",
+  version: "3.3.2",
   icon: "🗞️",
   description: "Read 600+ daily comic strips via ComicsRSS – GoComics, Comics Kingdom, Wumo, Life on Earth, and more.",
   contentType: "comics",
@@ -81,12 +81,15 @@ __cinderExport = {
   },
 
   _comicToResult: function(c) {
+    var description = "Daily comic strip.";
     return {
       id: c.id,
       title: c.title,
       cover: "https://avatar.gocomics.com/" + c.id + "/avatar_256.jpg",
       url: this.RSS_BASE + "/" + c.id + ".rss",
       format: "manga",
+      description: description,
+      extra: { description: description },
     };
   },
 
@@ -420,4 +423,7 @@ __cinderExport = {
     ];
   },
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+__cinderExport.getBookDetails = __cinderExport.getMangaDetails;
 

@@ -2,7 +2,7 @@ var AsuraScans = {};
 
 AsuraScans.id = "asurascans";
 AsuraScans.name = "Asura Scans";
-AsuraScans.version = "0.1.0-cinder";
+AsuraScans.version = "0.1.1-cinder";
 AsuraScans.icon = "AS";
 AsuraScans.description = "Read manga, manhwa, and manhua from Asura Scans.";
 AsuraScans.contentType = "manga";
@@ -252,6 +252,7 @@ AsuraScans._toSearchResult = async function(manga) {
   var slug = String(manga.slug || this._seriesSlugFromId(manga.public_url || manga.source_url || manga.id || "") || "");
   var publicUrl = this._absUrl(manga.public_url || (slug ? "/comics/" + slug : ""));
   var coverPayload = await this._coverPayload(manga.cover || manga.cover_url || manga.thumbnail_url || "");
+  var description = this._description(manga);
   return {
     id: "/series/" + slug,
     title: String(manga.title || slug || "Unknown Title"),
@@ -264,12 +265,14 @@ AsuraScans._toSearchResult = async function(manga) {
     contentType: "manga",
     contentTypes: ["manga"],
     contentSubtypes: [String(manga.type || "manga").toLowerCase()],
+    description: description || undefined,
     extra: {
       slug: slug,
       publicUrl: publicUrl,
       randomSlug: this._publicSlug(manga),
       status: this._status(manga.status),
       genres: this._genres(manga),
+      description: description || undefined,
       coverHeaders: coverPayload.coverHeaders,
     },
   };
@@ -444,5 +447,8 @@ AsuraScans.getSettings = function() {
     },
   ];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+AsuraScans.getBookDetails = AsuraScans.getMangaDetails;
 
 __cinderExport = AsuraScans;

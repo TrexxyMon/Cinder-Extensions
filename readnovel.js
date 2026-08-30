@@ -1,7 +1,7 @@
 __cinderExport = {
     id: "readnovel",
     name: "ReadNovelEU",
-    version: "0.1.0-cinder",
+    version: "0.1.1-cinder",
     icon: "RN",
     description: "Search and read chaptered web novels from ReadNovelEU, the current wuxiaworld.eu destination.",
     contentType: "books",
@@ -118,6 +118,7 @@ __cinderExport = {
         var chapterCount = item.chapters || item.numOfChaps || 0;
         var cover = this._absoluteUrl(item.original_image || item.image || "");
         var status = this._statusLabel(item.status);
+        var description = this._decode(item.description || "");
         return {
             id: slug,
             title: this._decode(item.name || item.title || slug),
@@ -127,9 +128,10 @@ __cinderExport = {
             format: "epub",
             size: chapterCount ? String(chapterCount) + " chapters" : "",
             source: "ReadNovelEU",
+            description: description || undefined,
             extra: {
                 slug: slug,
-                description: this._decode(item.description || ""),
+                description: description || undefined,
                 chapterCount: chapterCount,
                 status: status,
                 lastChapterUpdated: item.last_chap_updated || item.updated_at || "",

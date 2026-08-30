@@ -11,7 +11,7 @@ var BookracySource = {};
 
 BookracySource.id = "bookracy";
 BookracySource.name = "Bookracy";
-BookracySource.version = "0.1.1-cinder";
+BookracySource.version = "0.1.2-cinder";
 BookracySource.icon = "📖";
 BookracySource.description = "Search and download ebooks from Bookracy — a free, open-source library of millions of books, comics, and manga.";
 BookracySource.contentType = "books";
@@ -124,6 +124,7 @@ BookracySource._resultFromItem = function(item) {
 
 	// Stable ID from md5 + format
 	var id = (item.md5 || this._slug(title)) + "#" + format;
+	var description = this._clean(item.description || "");
 
 	return {
 		id: id,
@@ -135,10 +136,11 @@ BookracySource._resultFromItem = function(item) {
 		format: format,
 		size: this._clean(item.book_size || ""),
 		source: "Bookracy",
+		description: description || undefined,
 		extra: {
 			md5: item.md5 || undefined,
 			downloadUrl: downloadUrl || undefined,
-			description: this._clean(item.description || ""),
+			description: description || undefined,
 			publisher: this._clean(item.publisher || ""),
 			year: this._clean(item.year || ""),
 			language: this._clean(item.book_lang || "").replace(/\s*\[.*\]\s*/, ""),

@@ -1,7 +1,7 @@
 __cinderExport = {
     id: "witchculttranslation",
     name: "Witch Cult Translations",
-    version: "0.1.2",
+    version: "0.1.3",
     icon: "WC",
     description: "Read public chaptered Re:Zero web novel fan translations from Witch Cult Translations and package arcs into EPUB on device. No debrid required.",
     contentType: "books",
@@ -288,6 +288,7 @@ __cinderExport = {
     },
 
     _resultFromArc: function(arc, index) {
+        var description = arc.description || "Chaptered web novel arc from Witch Cult Translations.";
         return {
             id: arc.id,
             title: arc.title,
@@ -298,10 +299,12 @@ __cinderExport = {
             source: "Witch Cult Translations",
             size: arc.id === "all" ? "chaptered" : "arc",
             availability: Math.max(1, 100 - index),
+            description: description,
             extra: {
                 arcId: arc.id,
                 arcUrl: arc.url,
-                summary: arc.description || "Chaptered web novel arc from Witch Cult Translations.",
+                description: description,
+                summary: description,
             },
         };
     },

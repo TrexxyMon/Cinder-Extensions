@@ -52,6 +52,7 @@ __cinderExport = {
 		doc.querySelectorAll(".book-item").forEach((item) => {
 			const id = item.querySelector("a")?.attr("href");
 			const title = item.querySelector("h2")?.text();
+			const description = item.querySelector(".desc")?.text();
 
 			if (id && title) {
 				results.push({
@@ -59,14 +60,16 @@ __cinderExport = {
 					title: title,
 					author: item.querySelector(".author")?.text(),
 					cover: item.querySelector("img")?.attr("src"),
+					description: description,
 
 					// If you have the direct download URL right away (capabilities.download = true)
 					url: `https://example.com/download/${id}.epub`,
 					format: "books",
 
-					// Any additional metadata you want to display
+					// Any additional source-specific metadata needed later
 					extra: {
-						description: item.querySelector(".desc")?.text(),
+						// Keep this duplicate for older Cinder APKs.
+						description: description,
 						status: "completed",
 					},
 				});
@@ -74,6 +77,21 @@ __cinderExport = {
 		});
 
 		return results;
+	},
+
+	// Optional rich metadata. Cinder calls this lazily after a title is opened,
+	// so a detail-page request here does not slow down the search result list.
+	// Manga/comic sources can implement getMangaDetails(id) with the same fields.
+	async getBookDetails(bookId) {
+		const response = await cinder.fetch(bookId);
+		const doc = cinder.parseHTML(response.data);
+		return {
+			id: bookId,
+			title: doc.querySelector("h1")?.text(),
+			author: doc.querySelector(".author")?.text(),
+			cover: doc.querySelector(".cover img")?.attr("src"),
+			description: doc.querySelector(".description")?.text(),
+		};
 	},
 
 	// â”€â”€ Discover (Home Page) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

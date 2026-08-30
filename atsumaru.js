@@ -2,7 +2,7 @@ var Atsumaru = {};
 
 Atsumaru.id = "atsumaru";
 Atsumaru.name = "Atsumaru";
-Atsumaru.version = "0.1.0-cinder";
+Atsumaru.version = "0.1.1-cinder";
 Atsumaru.icon = "AT";
 Atsumaru.description = "Read manga, manhwa, manhua, and OEL from Atsumaru.";
 Atsumaru.contentType = "manga";
@@ -165,6 +165,7 @@ Atsumaru._mapMangaResult = async function(item) {
   var genres = [];
   if (item.type) genres.push(String(item.type));
   genres = genres.concat(this._genresFromValue(item.genres || item.tags));
+  var description = this._description(item);
   return {
     id: String(item.id || ""),
     title: String(item.title || item.englishTitle || "Unknown Title"),
@@ -177,8 +178,9 @@ Atsumaru._mapMangaResult = async function(item) {
     contentType: "manga",
     contentTypes: ["manga"],
     contentSubtypes: [String(item.type || "manga").toLowerCase()],
+    description: description || undefined,
     extra: {
-      description: this._description(item),
+      description: description || undefined,
       status: this._status(item.status),
       genres: genres,
       coverHeaders: coverPayload.coverHeaders,
@@ -310,5 +312,8 @@ Atsumaru.getPages = async function(chapterId) {
     return !!page.url;
   });
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+Atsumaru.getBookDetails = Atsumaru.getMangaDetails;
 
 __cinderExport = Atsumaru;

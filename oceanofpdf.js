@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "oceanofpdf",
 	name: "OceanofPDF",
-	version: "0.1.3",
+	version: "0.1.4",
 	icon: "OPDF",
 	description: "OceanofPDF download-source extension with separate EPUB/PDF results and POST form downloads.",
 	contentType: "books",
@@ -231,8 +231,10 @@ __cinderExport = {
 						url: url,
 						format: format,
 						source: "OceanofPDF",
+						description: summary || undefined,
 						extra: {
 							genre: genre || undefined,
+							description: summary || undefined,
 							summary: summary || undefined,
 							preferredFormat: format,
 							sourcePageOnly: true,

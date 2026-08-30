@@ -5,7 +5,7 @@
                        {
                            "id":  "bookracy",
                            "name":  "Bookracy",
-                           "version":  "0.1.1-cinder",
+                           "version":  "0.1.2-cinder",
                            "description":  "Search and download ebooks from Bookracy — a free, open-source library of millions of books, comics, and manga.",
                            "contentType":  "books",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/bookracy.js",
@@ -20,7 +20,7 @@
                        {
                            "id":  "asurascans",
                            "name":  "Asura Scans",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Read manga, manhwa, and manhua from Asura Scans.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/asurascans.js",
@@ -37,7 +37,7 @@
                        {
                            "id":  "atsumaru",
                            "name":  "Atsumaru",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Read manga, manhwa, manhua, and OEL from Atsumaru.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/atsumaru.js",
@@ -55,7 +55,7 @@
                        {
                            "id":  "mangadex",
                            "name":  "MangaDex",
-                           "version":  "1.0.9",
+                           "version":  "1.0.10",
                            "description":  "Search manga from MangaDex.org - free, community-run manga platform",
                            "contentType":  "manga",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/mangadex.js",
@@ -70,7 +70,7 @@
                        {
                            "id":  "mangak",
                            "name":  "MangaK",
-                           "version":  "0.1.2-cinder",
+                           "version":  "0.1.3-cinder",
                            "description":  "Read manga, manhwa, and manhua from MangaK. No debrid required.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/mangak.js",
@@ -87,7 +87,7 @@
                        {
                            "id":  "mangakakalot",
                            "name":  "MangaKakalot",
-                           "version":  "0.1.5-cinder",
+                           "version":  "0.1.6-cinder",
                            "description":  "Read manga, manhwa, and manhua from MangaKakalot. No debrid required.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/mangakakalot.js",
@@ -104,7 +104,7 @@
                        {
                            "id":  "readcomiconline",
                            "name":  "ReadComicOnline",
-                           "version":  "1.0.19",
+                           "version":  "1.0.20",
                            "description":  "Read Marvel, DC, Image and more comics - the largest western comics library",
                            "contentType":  "comics",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/readcomiconline.js",
@@ -119,7 +119,7 @@
                        {
                            "id":  "weebcentral",
                            "name":  "WeebCentral",
-                           "version":  "1.0.7",
+                           "version":  "1.0.8",
                            "description":  "Read manga, manhwa, and manhua from WeebCentral.com",
                            "contentType":  "manga",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/weebcentral.js",
@@ -136,7 +136,7 @@
                        {
                            "id":  "comickfan",
                            "name":  "ComicK Fanmade",
-                           "version":  "0.1.1-cinder",
+                           "version":  "0.1.2-cinder",
                            "description":  "Read manga, manhwa, and manhua from ComicK Fanmade. No debrid required.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/comickfan.js",
@@ -153,7 +153,7 @@
                        {
                            "id":  "webtoons",
                            "name":  "WEBTOON",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Read public, web-visible WEBTOON Originals and Canvas episodes.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/webtoons.js",
@@ -185,7 +185,7 @@
                        {
                            "id":  "royalroad",
                            "name":  "Royal Road",
-                           "version":  "1.0.2",
+                           "version":  "1.0.3",
                            "description":  "Search chaptered fiction from Royal Road and package it into EPUB for reading in Cinder.",
                            "contentType":  "books",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/royalroad.js",
@@ -202,7 +202,7 @@
                        {
                            "id":  "readnovel",
                            "name":  "ReadNovelEU",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Search and read chaptered web novels from ReadNovelEU, the current wuxiaworld.eu destination.",
                            "contentType":  "books",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/readnovel.js",
@@ -262,7 +262,7 @@
                        {
                            "id":  "webnovel",
                            "name":  "WebNovel",
-                           "version":  "0.1.2-cinder",
+                           "version":  "0.1.3-cinder",
                            "description":  "Search and read public chaptered web novels from WebNovel. Locked chapters are not bypassed.",
                            "contentType":  "books",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/webnovel.js",
@@ -282,7 +282,7 @@
                        {
                            "id":  "witchculttranslation",
                            "name":  "Witch Cult Translations",
-                           "version":  "0.1.2",
+                           "version":  "0.1.3",
                            "description":  "Read public chaptered Re:Zero web novel fan translations from Witch Cult Translations and package arcs into EPUB on device. No debrid required.",
                            "contentType":  "books",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/witchculttranslation.js",
@@ -316,7 +316,7 @@
                        {
                            "id":  "gocomics",
                            "name":  "GoComics",
-                           "version":  "3.3.1",
+                           "version":  "3.3.2",
                            "description":  "Read 600+ daily comic strips via ComicsRSS - GoComics, Comics Kingdom, Wumo, Life on Earth, and more.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/gocomics.js",
@@ -331,7 +331,7 @@
                        {
                            "id":  "comichubfree",
                            "name":  "ComicHubFree",
-                           "version":  "0.1.3-cinder",
+                           "version":  "0.1.4-cinder",
                            "description":  "Read western comics from ComicHubFree.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/comichubfree.js",
@@ -346,7 +346,7 @@
                        {
                            "id":  "batcave",
                            "name":  "BatCave",
-                           "version":  "0.2.0-cinder",
+                           "version":  "0.2.1-cinder",
                            "description":  "Read western comics from BatCave. No debrid required.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/batcave.js",
@@ -361,7 +361,7 @@
                        {
                            "id":  "bbato",
                            "name":  "BBato",
-                           "version":  "1.0.3-cinder",
+                           "version":  "1.0.4-cinder",
                            "description":  "Read manga, manhwa, and manhua from BBato.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/bbato.js",
@@ -391,7 +391,7 @@
                        {
                            "id":  "zlibrary",
                            "name":  "Z-Library",
-                           "version":  "1.2.0",
+                           "version":  "1.2.1",
                            "description":  "Search, discover, and download ebooks through your Z-Library account.",
                            "icon":  "book-outline",
                            "contentType":  "books",
@@ -405,7 +405,7 @@
                        {
                            "id":  "oceanofpdf",
                            "name":  "OceanofPDF",
-                           "version":  "0.1.3",
+                           "version":  "0.1.4",
                            "description":  "Download-source extension for OceanofPDF with separate EPUB/PDF results and POST form downloads.",
                            "contentType":  "books",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/oceanofpdf.js",
@@ -450,7 +450,7 @@
                        {
                            "id":  "luminaretranslations",
                            "name":  "Luminare Translations",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Search public Luminare light novels and build available chapters into EPUB on device. No debrid required.",
                            "contentType":  "books",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/luminaretranslations.js",
@@ -468,7 +468,7 @@
                        {
                            "id":  "bronstl",
                            "name":  "BronsTL",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Search public BronsTL light novels and build available chapters into EPUB on device. No debrid required.",
                            "contentType":  "books",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/bronstl.js",
@@ -503,7 +503,7 @@
                        {
                            "id":  "freemagazines",
                            "name":  "FreeMagazines.top",
-                           "version":  "1.2.2-cinder",
+                           "version":  "1.2.3-cinder",
                            "description":  "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.",
                            "contentType":  "magazine",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/freemagazines.js?v=1.2.2-cinder",
@@ -515,7 +515,7 @@
                        {
                            "id":  "readallcomics",
                            "name":  "ReadAllComics",
-                           "version":  "0.1.3-cinder",
+                           "version":  "0.1.4-cinder",
                            "description":  "Read western comics from ReadAllComics.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/readallcomics.js",
