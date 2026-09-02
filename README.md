@@ -100,6 +100,7 @@ Add the extension to `repo.json` so Cinder can discover and install it:
   "name": "My Source",
   "version": "1.0.0",
   "description": "Short description",
+  "language": "English",
   "contentType": "manga",
   "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/my-source.js",
   "minCinderVersion": "2.0.0"
@@ -266,6 +267,7 @@ cinder.log/warn/error(...)            // Extension logging
 ### Practical Rules
 
 - Keep source-specific scraping logic inside the extension, not the app.
+- Declare a `language` in every repository manifest entry. Use `"Multilingual"` only when the extension actually returns content in multiple languages.
 - Use absolute URLs in returned results and page lists.
 - Include required image/download headers, especially `Referer`.
 - Keep IDs stable across searches and updates.
