@@ -28,6 +28,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **LibGen** | Books | Direct download-source extension with on-device link resolution. |
 | **ElScione Server** | Books/Manga/Webnovels | Search an h5ai ebook and manga server for EPUB, PDF, CBZ, and CBR files. |
 | **OceanofPDF** | Books | Download-source extension with separate EPUB/PDF results and POST form downloads. |
+| **Royal Road** | Webnovels | Search chaptered fiction from Royal Road and package it into EPUB for reading in Cinder. |
 | **ReadNovelEU** | Books | Search and read chaptered web novels from the current WuxiaWorld destination. |
 | **NovelBin** | Books/Webnovels | Search public chaptered web novels and build EPUBs on device. No debrid required. |
 | **Novel Fire** | Books/Webnovels | Search public chaptered web novels and build EPUBs on device. No debrid required. |
@@ -35,7 +36,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **Witch Cult Translations** | Books/Webnovels | Read public chaptered Re:Zero web novel fan translations and package arcs into EPUB on device. |
 | **Luminare Translations** | Books/Webnovels | Search public light novels, load rich metadata and covers, and build available chapters with illustrations into EPUB. No debrid required. |
 | **BronsTL** | Books/Webnovels | Search public light novels, load metadata and covers, and build available chapters with illustrations into EPUB. No debrid required. |
-| **Literotica** | Books/Webnovels | Search adult fiction and build public stories into EPUB on device. No debrid required. |
+| **Literotica** | Webnovels | Search adult fiction and build public stories into EPUB on device. No debrid required. |
 | **ReadComicsOnline** | Comics | Search, read, and download comics from ReadComicsOnline. |
 | **ReadAllComics** | Comics | Search and read western comics with chaptered image pages. No debrid required. |
 | **WeebCentral** | Manga | Search, read, and download manga from WeebCentral. Credit to Theoenogo for building this extension. |

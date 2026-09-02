@@ -1,11 +1,11 @@
 ﻿__cinderExport = {
     id: "royalroad",
     name: "Royal Road",
-    version: "1.0.3",
+    version: "1.0.4",
     icon: "RR",
     description: "Search chaptered fiction from Royal Road and package it into EPUB for reading in Cinder.",
-    contentType: "books",
-    contentTypes: ["webnovel", "ebook"],
+    contentType: "webnovel",
+    contentTypes: ["webnovel"],
     contentSubtypes: ["webFiction", "lightNovel"],
 
     capabilities: {
@@ -153,6 +153,8 @@
                 cover: cover,
                 url: absoluteUrl,
                 format: "epub",
+                contentType: "webnovel",
+                contentTypes: ["webnovel"],
                 size: chapterCount ? String(chapterCount) + " chapters" : "",
                 source: "Royal Road",
                 description: description || undefined,
@@ -183,6 +185,8 @@
                 cover: "",
                 url: titleUrl,
                 format: "epub",
+                contentType: "webnovel",
+                contentTypes: ["webnovel"],
                 source: "Royal Road",
                 extra: {
                     fictionId: titleParsed.fictionId,

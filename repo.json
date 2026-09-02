@@ -196,15 +196,14 @@
                        {
                            "id":  "royalroad",
                            "name":  "Royal Road",
-                           "version":  "1.0.3",
+                           "version":  "1.0.4",
                            "description":  "Search chaptered fiction from Royal Road and package it into EPUB for reading in Cinder.",
                            "language":  "English",
-                           "contentType":  "books",
+                           "contentType":  "webnovel",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/royalroad.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
-                                                "webnovel",
-                                                "ebook"
+                                                "webnovel"
                                             ],
                            "contentSubtypes":  [
                                                    "webFiction",
@@ -514,15 +513,14 @@
                        {
                            "id":  "literotica",
                            "name":  "Literotica",
-                           "version":  "0.1.1-cinder",
+                           "version":  "0.1.2-cinder",
                            "description":  "Search adult fiction from Literotica and build stories into EPUB on device. No debrid required.",
                            "language":  "English",
-                           "contentType":  "books",
+                           "contentType":  "webnovel",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/literotica.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
-                                                "webnovel",
-                                                "ebook"
+                                                "webnovel"
                                             ],
                            "contentSubtypes":  [
                                                    "webFiction",

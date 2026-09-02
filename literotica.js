@@ -2,11 +2,11 @@ var LiteroticaSource = {};
 
 LiteroticaSource.id = "literotica";
 LiteroticaSource.name = "Literotica";
-LiteroticaSource.version = "0.1.1-cinder";
+LiteroticaSource.version = "0.1.2-cinder";
 LiteroticaSource.icon = "LT";
 LiteroticaSource.description = "Search adult fiction from Literotica and build stories into EPUB on device. No debrid required.";
-LiteroticaSource.contentType = "books";
-LiteroticaSource.contentTypes = ["webnovel", "ebook"];
+LiteroticaSource.contentType = "webnovel";
+LiteroticaSource.contentTypes = ["webnovel"];
 LiteroticaSource.contentSubtypes = ["webFiction", "adultFiction"];
 LiteroticaSource.isAdult = true;
 LiteroticaSource.capabilities = {
@@ -317,7 +317,7 @@ LiteroticaSource._parseSearchResultsWithDom = function(html) {
 			source: this.name,
 			format: "epub",
 			contentType: "webnovel",
-			contentTypes: ["webnovel", "ebook"],
+			contentTypes: ["webnovel"],
 			contentSubtypes: ["adultFiction", "webFiction"],
 			isAdult: true,
 			publishedDate: dateMeta ? this._decode(dateMeta.attr("content") || "") : undefined,
@@ -376,7 +376,7 @@ LiteroticaSource._parseSearchResultsWithRegex = function(html) {
 			source: this.name,
 			format: "epub",
 			contentType: "webnovel",
-			contentTypes: ["webnovel", "ebook"],
+			contentTypes: ["webnovel"],
 			contentSubtypes: ["adultFiction", "webFiction"],
 			isAdult: true,
 			publishedDate: date ? this._decode(date[1]) : undefined,
@@ -489,7 +489,7 @@ LiteroticaSource.getBookDetails = async function(bookId) {
 		source: this.name,
 		format: "epub",
 		contentType: "webnovel",
-		contentTypes: ["webnovel", "ebook"],
+		contentTypes: ["webnovel"],
 		contentSubtypes: ["adultFiction", "webFiction"],
 		isAdult: true,
 		publishedDate: article.datePublished || undefined,
