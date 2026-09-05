@@ -7,7 +7,7 @@ var DownMagazSource = {};
 
 DownMagazSource.id = "downmagaz";
 DownMagazSource.name = "DownMagaz";
-DownMagazSource.version = "4.0.13";
+DownMagazSource.version = "4.0.14";
 DownMagazSource.icon = "\uD83D\uDCF0";
 DownMagazSource.description =
   "Search and browse DownMagaz on device, then resolve issue links for PDF download.";
@@ -431,6 +431,9 @@ DownMagazSource.resolve = async function(item) {
     url: directUrl || undefined,
     debridLink: chosen,
     debridLinks: rankedLinks,
+    // Current DownMagaz host links resolve reliably through Debrid-Link.
+    // Cinder builds that predate provider hints safely ignore this field.
+    debridProvider: "debridlink",
     // Resolve against the article itself so a stale or generic catalog label
     // can never become the stored issue filename.
     fileName: this._slugToFileName(articleMetadata.title, ext)
