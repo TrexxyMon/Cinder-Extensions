@@ -1,9 +1,9 @@
 __cinderExport = {
 	id: "oceanofpdf",
 	name: "OceanofPDF",
-	version: "0.1.4",
+	version: "0.1.5",
 	icon: "OPDF",
-	description: "OceanofPDF download-source extension with separate EPUB/PDF results and POST form downloads.",
+	description: "OceanofPDF download-source extension with separate EPUB/PDF results, a ReadRobe mirror fallback, and POST form downloads.",
 	contentType: "books",
 	contentTypes: ["ebook"],
 	excludeFromDefaultMetadataProviders: true,
@@ -18,13 +18,20 @@ __cinderExport = {
 	},
 
 	_BASE_URL: "https://oceanofpdf.com",
+	_BASE_URLS: ["https://readrobe.com", "https://oceanofpdf.com"],
 
-	_absUrl: function(url) {
+	_absUrl: function(url, baseUrl) {
 		if (!url) return "";
 		if (url.indexOf("//") === 0) return "https:" + url;
 		if (url.indexOf("http://") === 0 || url.indexOf("https://") === 0) return url;
-		if (url.charAt(0) === "/") return this._BASE_URL + url;
-		return this._BASE_URL + "/" + url;
+		baseUrl = baseUrl || this._BASE_URL;
+		if (url.charAt(0) === "/") return baseUrl + url;
+		return baseUrl + "/" + url;
+	},
+
+	_baseForUrl: function(url) {
+		var match = String(url || "").match(/^(https?:\/\/[^/]+)/i);
+		return match ? match[1] : this._BASE_URL;
 	},
 
 	_clean: function(value) {
@@ -51,7 +58,7 @@ __cinderExport = {
 				timeout: 30000,
 			});
 			if (this._isUsableHtml(resp)) return resp;
-			cinder.warn("[OceanofPDF] Fetch returned challenge/unusable HTML, using browser fetch.");
+			cinder.log("[OceanofPDF] Fetch returned challenge/unusable HTML, using browser fetch.");
 		} catch (err) {
 			cinder.warn("[OceanofPDF] Fetch failed, using browser fetch: " + err);
 		}
@@ -59,6 +66,8 @@ __cinderExport = {
 		return await cinder.fetchBrowser(url, {
 			headers: {
 				"X-Cinder-Suppress-Interactive": "1",
+				"X-Cinder-Wait-For-Selector": "article.entry, article.post-item",
+				"X-Cinder-Max-Wait-Ms": "45000",
 			},
 			timeout: 60000,
 		});
@@ -95,15 +104,18 @@ __cinderExport = {
 		return formats;
 	},
 
-	_extractDownloadForms: function(html) {
+	_extractDownloadForms: function(html, pageUrl) {
 		var doc = cinder.parseHTML(html);
-		var forms = doc.querySelectorAll('form[action*="Fetching_Resource.php"]');
+		var forms = doc.querySelectorAll(
+			'form[action*="Fetching_Resource.php"], form[action*="fetching-ebook-php"]'
+		);
 		var results = [];
+		var baseUrl = this._baseForUrl(pageUrl);
 
 		for (var i = 0; i < forms.length; i++) {
 			try {
 				var form = forms[i];
-				var endpoint = this._absUrl(form.attr("action") || "");
+				var endpoint = this._absUrl(form.attr("action") || "", baseUrl);
 				var idInput = form.querySelector('input[name="id"]');
 				var fileInput = form.querySelector('input[name="filename"]');
 				var requestId = this._clean(idInput ? idInput.attr("value") || "" : "");
@@ -140,68 +152,29 @@ __cinderExport = {
 		return forms[0];
 	},
 
-	_extractDownloadForms: function(html) {
+	_parseResultArticles: function(html, baseUrl) {
 		var doc = cinder.parseHTML(html);
-		var forms = doc.querySelectorAll('form[action*="Fetching_Resource.php"]');
-		var results = [];
-
-		for (var i = 0; i < forms.length; i++) {
-			try {
-				var form = forms[i];
-				var endpoint = this._absUrl(form.attr("action") || "");
-				var idInput = form.querySelector('input[name="id"]');
-				var fileInput = form.querySelector('input[name="filename"]');
-				var requestId = this._clean(idInput ? idInput.attr("value") || "" : "");
-				var fileName = this._clean(fileInput ? fileInput.attr("value") || "" : "");
-				if (!endpoint || !requestId || !fileName) continue;
-
-				var format = "";
-				var extMatch = fileName.toLowerCase().match(/\.([a-z0-9]{2,5})(?:\s|$)/);
-				if (extMatch) format = extMatch[1];
-
-				results.push({
-					endpoint: endpoint,
-					requestId: requestId,
-					fileName: fileName,
-					format: format,
-				});
-			} catch (err) {
-				cinder.warn("[OceanofPDF] Failed to parse download form: " + err);
-			}
-		}
-
-		return results;
-	},
-
-	_pickDownloadForm: function(forms, preferredFormat) {
-		if (!forms || !forms.length) return null;
-		var normalized = this._clean(preferredFormat).toLowerCase();
-		var hasTaggedFormats = false;
-		for (var i = 0; i < forms.length; i++) {
-			if (forms[i].format) hasTaggedFormats = true;
-			if (forms[i].format === normalized) return forms[i];
-		}
-		if (normalized && hasTaggedFormats) return null;
-		return forms[0];
-	},
-
-	_parseResultArticles: function(html) {
-		var doc = cinder.parseHTML(html);
-		var articles = doc.querySelectorAll("main#genesis-content article.entry");
+		var articles = doc.querySelectorAll(
+			"main#genesis-content article.entry, main#main article.post-item, article.post-item.entry"
+		);
 		var results = [];
 
 		for (var i = 0; i < articles.length; i++) {
 			try {
 				var article = articles[i];
 				var titleLink = article.querySelector("h2.entry-title a.entry-title-link") ||
-					article.querySelector("h1.entry-title a.entry-title-link");
+					article.querySelector("h1.entry-title a.entry-title-link") ||
+					article.querySelector("h2.post-title a") ||
+					article.querySelector(".entry-title a") ||
+					article.querySelector("h1 a, h2 a, h3 a");
 				if (!titleLink) continue;
 
 				var title = this._clean(titleLink.text());
-				var url = this._absUrl(titleLink.attr("href") || "");
+				var url = this._absUrl(titleLink.attr("href") || "", baseUrl);
 				if (!title || !url) continue;
 
-				var meta = article.querySelector(".postmetainfo");
+				var meta = article.querySelector(".postmetainfo") ||
+					article.querySelector(".post-details");
 				var metaText = meta ? this._clean(meta.text()).replace(/\s*(Author|Language|Genre)\s*:/g, "\n$1:") : "";
 				var author = this._extractMetaValue(metaText, "Author");
 				var genre = this._extractMetaValue(metaText, "Genre");
@@ -211,7 +184,7 @@ __cinderExport = {
 					article.querySelector("img");
 				var cover = "";
 				if (image) cover = image.attr("data-src") || image.attr("src") || "";
-				cover = this._absUrl(cover);
+				cover = this._absUrl(cover, baseUrl);
 				if (cover.indexOf("data:image/svg+xml") === 0) cover = "";
 
 				var summaryEl = article.querySelector(".entry-content p");
@@ -251,13 +224,23 @@ __cinderExport = {
 
 	search: async function(query, page) {
 		page = page || 0;
-		var url = page > 0
-			? this._BASE_URL + "/page/" + (page + 1) + "/?s=" + encodeURIComponent(query)
-			: this._BASE_URL + "/?s=" + encodeURIComponent(query);
-		cinder.log("[OceanofPDF] Search: " + url);
-		var resp = await this._fetchPage(url);
-		if (!this._isUsableHtml(resp)) return [];
-		return this._parseResultArticles(resp.data).slice(0, 50);
+		var bases = this._BASE_URLS || [this._BASE_URL];
+		for (var i = 0; i < bases.length; i++) {
+			var baseUrl = bases[i];
+			var url = page > 0
+				? baseUrl + "/page/" + (page + 1) + "/?s=" + encodeURIComponent(query)
+				: baseUrl + "/?s=" + encodeURIComponent(query);
+			cinder.log("[OceanofPDF] Search: " + url);
+			try {
+				var resp = await this._fetchPage(url);
+				if (!this._isUsableHtml(resp)) continue;
+				var results = this._parseResultArticles(resp.data, baseUrl).slice(0, 50);
+				if (results.length) return results;
+			} catch (err) {
+				cinder.warn("[OceanofPDF] Search host failed: " + baseUrl + " (" + err + ")");
+			}
+		}
+		return [];
 	},
 
 	resolve: async function(item) {
@@ -265,20 +248,12 @@ __cinderExport = {
 			String(item.format || item.extra?.preferredFormat || "epub").toLowerCase();
 		if (!item?.url) throw new Error("OceanofPDF item is missing a source page URL.");
 
-		var resp = await cinder.fetchBrowser(item.url, {
-			headers: {
-				"X-Cinder-Suppress-Interactive": "1",
-			},
-			timeout: 60000,
-		});
-		if (!this._isUsableHtml(resp)) {
-			resp = await this._fetchPage(item.url);
-		}
+		var resp = await this._fetchPage(item.url);
 		if (!this._isUsableHtml(resp)) {
 			throw new Error("OceanofPDF detail page could not be loaded.");
 		}
 
-		var forms = this._extractDownloadForms(resp.data || "");
+		var forms = this._extractDownloadForms(resp.data || "", item.url);
 		var selected = this._pickDownloadForm(forms, preferredFormat);
 		if (!selected) {
 			throw new Error("OceanofPDF download form was not found on the detail page.");
