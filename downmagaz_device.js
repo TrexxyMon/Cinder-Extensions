@@ -7,12 +7,11 @@ var DownMagazSource = {};
 
 DownMagazSource.id = "downmagaz";
 DownMagazSource.name = "DownMagaz";
-DownMagazSource.version = "4.0.11";
+DownMagazSource.version = "4.0.13";
 DownMagazSource.icon = "\uD83D\uDCF0";
 DownMagazSource.description =
   "Search and browse DownMagaz on device, then resolve issue links for PDF download.";
 DownMagazSource.contentType = "magazine";
-
 DownMagazSource.contentTypes = ["magazine"];
 DownMagazSource.capabilities = {
   search: true,
@@ -101,12 +100,48 @@ DownMagazSource._decode = function(text) {
   if (!text) return "";
   return cinder.normalizeText(
     String(text)
+      .replace(/&#8211;/g, "\u2013")
+      .replace(/&#8212;/g, "\u2014")
       .replace(/&#039;/g, "'")
       .replace(/&amp;/g, "&")
       .replace(/&quot;/g, '"')
-      .replace(/&#8211;/g, "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ")
-      .replace(/&#8212;/g, "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â")
   );
+};
+
+DownMagazSource._coverHeaders = function(pageUrl) {
+  return {
+    "User-Agent": this._headers()["User-Agent"],
+    "Referer": pageUrl || this.BASE_URL + "/"
+  };
+};
+
+DownMagazSource._metaValue = function(doc, name) {
+  var node =
+    doc.querySelector('meta[property="' + name + '"]') ||
+    doc.querySelector('meta[name="' + name + '"]');
+  return node ? this._decode(node.attr("content") || "") : "";
+};
+
+DownMagazSource._articleMetadata = function(html, pageUrl, fallbackTitle) {
+  var doc = cinder.parseHTML(html);
+  var title = this._metaValue(doc, "og:title") || fallbackTitle || "Magazine";
+  title = title.replace(/\s*[\u00bb|]\s*Download PDF magazines.*$/i, "").trim();
+  var description =
+    this._metaValue(doc, "og:description") ||
+    this._metaValue(doc, "description");
+  var cover = this._metaValue(doc, "og:image");
+  if (cover) cover = cinder.resolveUrl(cover, pageUrl);
+  var languageMatch = description.match(/\b([A-Za-z]{2,20})\s*\|\s*\d+\s+pages\b/i);
+
+  return {
+    title: title,
+    author: "Magazine",
+    cover: cover || undefined,
+    coverHighResolution: cover || undefined,
+    coverHeaders: cover ? this._coverHeaders(pageUrl) : undefined,
+    description: description || undefined,
+    language: languageMatch ? languageMatch[1].trim() : undefined
+  };
 };
 
 DownMagazSource._slugToFileName = function(title, fallbackExt) {
@@ -150,19 +185,23 @@ DownMagazSource._parseListings = function(html) {
     var rawText = card.text ? card.text() : "";
     var sizeM = rawText.match(/(\d+(?:[.,]\d+)?)\s*(MB|GB|KB)/i);
     var formatM = rawText.match(/\b(True\s+)?(PDF|CBZ|CBR|EPUB)\b/i);
+    var coverHeaders = cover ? this._coverHeaders(pageUrl) : undefined;
 
     results.push({
       id: id,
       title: title,
       author: "Magazine",
       cover: cover,
+      coverHighResolution: cover || undefined,
+      coverHeaders: coverHeaders,
       url: pageUrl,
       format: formatM ? String(formatM[2]).toLowerCase() : "pdf",
       size: sizeM ? (sizeM[1] + " " + sizeM[2].toUpperCase()) : undefined,
       source: "DownMagaz",
       extra: {
         articleUrl: pageUrl,
-        articleId: id
+        articleId: id,
+        coverHeaders: coverHeaders
       }
     });
   }
@@ -299,9 +338,7 @@ DownMagazSource._debridLinkCandidates = function(links) {
   return ranked.filter(function(link) {
     var lower = String(link || "").toLowerCase();
     return lower.indexOf("javascript:") < 0 &&
-      lower.indexOf("addcomplaint") < 0 &&
-      lower.indexOf("nfile.cc") < 0 &&
-      lower.indexOf("novafile") < 0;
+      lower.indexOf("addcomplaint") < 0;
   });
 };
 
@@ -324,9 +361,19 @@ DownMagazSource.search = async function(query, page) {
   }
 };
 
+DownMagazSource.getBookDetails = async function(bookId) {
+  var pageUrl = /^https?:\/\//i.test(String(bookId || ""))
+    ? String(bookId)
+    : this.BASE_URL + "/" + String(bookId || "").replace(/^\/+/, "");
+  var html = await this._fetchText(pageUrl);
+  var metadata = this._articleMetadata(html, pageUrl, "Magazine");
+  metadata.id = String(bookId || pageUrl);
+  return metadata;
+};
+
 DownMagazSource.getDiscoverSections = async function() {
   return this.CATEGORIES.map(function(c) {
-    return { id: c.id, title: c.title, icon: "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â°" };
+    return { id: c.id, title: c.title, icon: "\uD83D\uDCF0" };
   });
 };
 
@@ -353,6 +400,11 @@ DownMagazSource.resolve = async function(item) {
   }
 
   var html = await this._fetchText(pageUrl);
+  var articleMetadata = this._articleMetadata(
+    html,
+    pageUrl,
+    item && item.title
+  );
   var links = this._extractCandidateLinks(html, pageUrl);
   var rankedLinks = this._debridLinkCandidates(links);
   cinder.log("DownMagaz candidates:", rankedLinks.slice(0, 8).join(" | "));
@@ -379,8 +431,9 @@ DownMagazSource.resolve = async function(item) {
     url: directUrl || undefined,
     debridLink: chosen,
     debridLinks: rankedLinks,
-    debridProvider: "debridlink",
-    fileName: this._slugToFileName(item && item.title, ext)
+    // Resolve against the article itself so a stale or generic catalog label
+    // can never become the stored issue filename.
+    fileName: this._slugToFileName(articleMetadata.title, ext)
   };
 };
 

@@ -181,14 +181,14 @@
                        {
                            "id":  "downmagaz",
                            "name":  "DownMagaz",
-                           "version":  "4.0.11",
+                           "version":  "4.0.13",
                            "description":  "Search and browse DownMagaz on device, then resolve issue links for PDF download.",
                            "language":  "Multilingual",
                            "contentType":  "magazine",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/downmagaz_device.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/downmagaz_device.js?v=4.0.13",
                            "minCinderVersion":  "2.0.0",
                            "debridSupport":  "required",
-                           "debridDescription":  "Requires Debrid-Link",
+                           "debridDescription":  "Requires a supported debrid provider. TorBox supports current Novafile links; Downup links can also use Debrid-Link.",
                            "contentTypes":  [
                                                 "magazine"
                                             ]
@@ -535,7 +535,7 @@
                            "description":  "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.",
                            "language":  "English",
                            "contentType":  "magazine",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/freemagazines.js?v=1.2.2-cinder",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/freemagazines.js?v=1.2.3-cinder",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "magazine"
