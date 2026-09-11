@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "oceanofpdf",
 	name: "OceanofPDF",
-	version: "0.1.5",
+	version: "0.1.6",
 	icon: "OPDF",
 	description: "OceanofPDF download-source extension with separate EPUB/PDF results, a ReadRobe mirror fallback, and POST form downloads.",
 	contentType: "books",
@@ -243,6 +243,77 @@ __cinderExport = {
 		return [];
 	},
 
+	_responseHeader: function(headers, name) {
+		var keys = Object.keys(headers || {});
+		for (var i = 0; i < keys.length; i++) {
+			if (keys[i].toLowerCase() === name.toLowerCase()) {
+				var value = headers[keys[i]];
+				return Array.isArray(value) ? value.join(", ") : String(value || "");
+			}
+		}
+		return "";
+	},
+
+	_downloadCookies: function(headers) {
+		var raw = this._responseHeader(headers, "set-cookie");
+		// Axios on older builds joins Set-Cookie values. Do not split the comma
+		// inside an Expires date, or forward cookie attributes as cookie names.
+		var parts = raw.split(/,(?=\s*[^\s;,=]+=)/);
+		var cookies = [];
+		for (var i = 0; i < parts.length; i++) {
+			var pair = parts[i].split(";")[0].trim();
+			if (/^[^\s;,=]+=[^\r\n;]*$/.test(pair)) cookies.push(pair);
+		}
+		return cookies.join("; ");
+	},
+
+	_resolveMirrorForm: async function(selected, pageUrl) {
+		// This mirror returns a session-bound link in the HTTP Refresh header,
+		// not in its HTML. Resolve it here using the long-standing fetch/headers
+		// API so older apps need neither new WebView hooks nor a binary bridge.
+		var response = await cinder.fetch(selected.endpoint, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded",
+				Referer: pageUrl,
+			},
+			body: "id=" + encodeURIComponent(selected.requestId) +
+				"&filename=" + encodeURIComponent(selected.fileName),
+			timeout: 20000,
+		});
+		if (!response || response.status < 200 || response.status >= 300) {
+			throw new Error("OceanofPDF mirror could not prepare the file (HTTP " +
+				(response ? response.status : 0) + "). Please try again.");
+		}
+		var refresh = this._responseHeader(response.headers, "refresh");
+		var match = refresh.match(/(?:^|;)\s*url\s*=\s*["']?([^\r\n]+?)["']?\s*$/i);
+		if (!match) {
+			throw new Error("OceanofPDF mirror did not return a download redirect. Please try again.");
+		}
+		var target = match[1].replace(/&amp;/gi, "&");
+		var url = typeof cinder.resolveUrl === "function"
+			? cinder.resolveUrl(target, selected.endpoint)
+			: this._absUrl(target, this._baseForUrl(selected.endpoint));
+		var filenameMatch = url.match(/[?&]filename=([^&#]*)/i);
+		var filename = "";
+		try {
+			filename = filenameMatch ? decodeURIComponent(filenameMatch[1].replace(/\+/g, " ")) : "";
+		} catch (_err) {}
+		// Never attach this session to another host, or silently select a
+		// different file/format when the provider returns an unexpected link.
+		if (this._baseForUrl(url).toLowerCase() !== this._baseForUrl(selected.endpoint).toLowerCase() ||
+			!/^https?:\/\/[^/]+\/download\.php\?/i.test(url) ||
+			(filenameMatch && (url.match(/[?&]filename=/ig) || []).length !== 1) ||
+			filename !== selected.fileName || !/[?&]token=[^&#\s]+/i.test(url) ||
+			/[\r\n]/.test(url)) {
+			throw new Error("OceanofPDF mirror returned an unexpected file redirect.");
+		}
+		var headers = { Referer: selected.endpoint };
+		var cookies = this._downloadCookies(response.headers);
+		if (cookies) headers.Cookie = cookies;
+		return { url: url, fileName: selected.fileName, headers: headers };
+	},
+
 	resolve: async function(item) {
 		var preferredFormat =
 			String(item.format || item.extra?.preferredFormat || "epub").toLowerCase();
@@ -257,6 +328,9 @@ __cinderExport = {
 		var selected = this._pickDownloadForm(forms, preferredFormat);
 		if (!selected) {
 			throw new Error("OceanofPDF download form was not found on the detail page.");
+		}
+		if (/^https:\/\/readrobe\.com\/fetching-ebook-php\/?(?:[?#]|$)/i.test(selected.endpoint)) {
+			return await this._resolveMirrorForm(selected, item.url);
 		}
 
 		return {

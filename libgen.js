@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.4",
+	version: "0.1.6",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
@@ -107,23 +107,36 @@ __cinderExport = {
 		return (await this._getSetting("base_url", this._DEFAULT_BASE_URL)).replace(/\/+$/, "");
 	},
 
-	_fetchHtml: async function(url) {
-		var resp = await cinder.fetch(url, {
-			headers: {
-				Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-				"Accept-Language": "en-US,en;q=0.8",
-				"User-Agent": "Mozilla/5.0 (Cinder Research Fixture)",
-			},
-			timeout: 30000,
-		});
-		if (!resp || resp.status < 200 || resp.status >= 400) {
-			var status = resp ? resp.status : "unknown";
-			var prefix = status === 0
-				? "Fixture request failed before receiving an HTTP response"
-				: "Fixture request failed with status " + status;
-			throw new Error(prefix + ": " + url);
+	_fetchHtml: async function(url, referer) {
+		var headers = {
+			Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			"Accept-Language": "en-US,en;q=0.8",
+			"User-Agent": "Mozilla/5.0 (Cinder Research Fixture)",
+		};
+		// The download landing page returns an empty HTTP 200 without its
+		// referring catalog/file page. Preserve it on retries and nested hops.
+		if (referer) headers.Referer = referer;
+		var resp = null;
+		for (var attempt = 0; attempt < 2; attempt++) {
+			resp = await cinder.fetch(url, {
+				headers: headers,
+				timeout: 30000,
+			});
+			if (resp && resp.status >= 200 && resp.status < 400) {
+				return resp.data || "";
+			}
+			var status = resp ? Number(resp.status) || 0 : 0;
+			if (attempt === 0 && (status === 0 || status >= 500)) {
+				await new Promise(function(resolve) { setTimeout(resolve, 250); });
+				continue;
+			}
+			break;
 		}
-		return resp.data || "";
+		var finalStatus = resp ? resp.status : "unknown";
+		var prefix = finalStatus === 0
+			? "Fixture request failed before receiving an HTTP response"
+			: "Fixture request failed with status " + finalStatus;
+		throw new Error(prefix + ": " + url);
 	},
 
 	_searchUrl: async function(query, page) {
@@ -265,23 +278,29 @@ __cinderExport = {
 		return "";
 	},
 
-	_extractHtmlDownloadPageUrl: function(html, baseUrl, expectedMd5) {
+	_extractHtmlDownloadPageUrls: function(html, baseUrl, expectedMd5) {
 		var normalizedHtml = this._decodeUrlText(html);
 		var matches = normalizedHtml.match(/(?:https?:\/\/|\/\/|\/)?[^"'<>\\\s]*(?:ads|file|edition)\.php\?[^"'<>\\\s]+/ig) || [];
 		var expected = this._clean(expectedMd5 || "").toLowerCase();
 		var seen = {};
+		var results = [];
 
 		for (var i = 0; i < matches.length; i++) {
-			var candidate = this._decodeUrlText(matches[i]);
+			var candidate = this._absUrl(baseUrl, this._decodeUrlText(matches[i]));
 			if (!candidate || seen[candidate]) continue;
 			seen[candidate] = true;
 			if (!this._isHtmlDownloadPageUrl(candidate)) continue;
 			var candidateMd5 = this._md5FromUrl(candidate).toLowerCase();
 			if (expected && candidateMd5 && candidateMd5 !== expected) continue;
-			return this._absUrl(baseUrl, candidate);
+			results.push(candidate);
 		}
 
-		return "";
+		return results;
+	},
+
+	_extractHtmlDownloadPageUrl: function(html, baseUrl, expectedMd5) {
+		var urls = this._extractHtmlDownloadPageUrls(html, baseUrl, expectedMd5);
+		return urls.length > 0 ? urls[0] : "";
 	},
 
 	_resolvedDownload: function(item, url, referer, useBrowser) {
@@ -302,22 +321,35 @@ __cinderExport = {
 		};
 	},
 
-	_resolveHtmlDownloadPage: async function(item, pageUrl, referer, md5) {
+	_resolveHtmlDownloadPage: async function(item, pageUrl, referer, md5, visited) {
 		var baseUrl = await this._getBaseUrl();
-		var html = await this._fetchHtml(pageUrl);
+		visited = visited || {};
+		var visitKey = this._clean(pageUrl).toLowerCase();
+		if (!visitKey || visited[visitKey]) {
+			throw new Error("LibGen download page loop detected.");
+		}
+		visited[visitKey] = true;
+		var html = await this._fetchHtml(pageUrl, referer || baseUrl + "/");
 		var keyedUrl = this._extractKeyedDownloadUrl(html, baseUrl, md5 || this._md5FromUrl(pageUrl));
 		if (keyedUrl) {
 			return this._resolvedDownload(item, keyedUrl, pageUrl, false);
 		}
 
-		var nestedDownloadPage = this._extractHtmlDownloadPageUrl(html, baseUrl, md5 || this._md5FromUrl(pageUrl));
-		if (nestedDownloadPage && nestedDownloadPage !== pageUrl) {
-			return await this._resolveHtmlDownloadPage(
-				item,
-				nestedDownloadPage,
-				pageUrl,
-				md5 || this._md5FromUrl(nestedDownloadPage),
-			);
+		var nestedDownloadPages = this._extractHtmlDownloadPageUrls(html, baseUrl, md5 || this._md5FromUrl(pageUrl));
+		for (var nestedIndex = 0; nestedIndex < nestedDownloadPages.length; nestedIndex++) {
+			var nestedDownloadPage = nestedDownloadPages[nestedIndex];
+			if (!nestedDownloadPage || nestedDownloadPage === pageUrl) continue;
+			try {
+				return await this._resolveHtmlDownloadPage(
+					item,
+					nestedDownloadPage,
+					pageUrl,
+					md5 || this._md5FromUrl(nestedDownloadPage),
+					visited,
+				);
+			} catch (nestedError) {
+				cinder.log("[LibGen] Alternate download page failed; trying the next candidate");
+			}
 		}
 
 		var doc = cinder.parseHTML(html);
@@ -551,14 +583,19 @@ __cinderExport = {
 		}
 		if (directUrl) {
 			if (this._isHtmlDownloadPageUrl(directUrl)) {
-				return await this._resolveHtmlDownloadPage(
-					item,
-					directUrl,
-					item.url,
-					this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(directUrl),
-				);
+				try {
+					return await this._resolveHtmlDownloadPage(
+						item,
+						directUrl,
+						item.url,
+						this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(directUrl),
+					);
+				} catch (directError) {
+					cinder.log("[LibGen] Primary download page failed; trying the result detail page");
+				}
+			} else {
+				return this._resolvedDownload(item, directUrl, item.url, false);
 			}
-			return this._resolvedDownload(item, directUrl, item.url, this._isHtmlDownloadPageUrl(directUrl));
 		}
 
 		var pageUrl = this._absUrl(baseUrl, item.url || (item.extra ? item.extra.detailUrl : ""));
@@ -566,18 +603,26 @@ __cinderExport = {
 
 		cinder.log("[LibGen] Resolve: " + pageUrl);
 		var html = await this._fetchHtml(pageUrl);
-		var nestedDownloadPage = this._extractHtmlDownloadPageUrl(
+		var nestedDownloadPages = this._extractHtmlDownloadPageUrls(
 			html,
 			baseUrl,
 			this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(pageUrl),
 		);
-		if (nestedDownloadPage && nestedDownloadPage !== pageUrl) {
-			return await this._resolveHtmlDownloadPage(
-				item,
-				nestedDownloadPage,
-				pageUrl,
-				this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(nestedDownloadPage),
-			);
+		var nestedError = null;
+		for (var nestedIndex = 0; nestedIndex < nestedDownloadPages.length; nestedIndex++) {
+			var nestedDownloadPage = nestedDownloadPages[nestedIndex];
+			if (!nestedDownloadPage || nestedDownloadPage === pageUrl) continue;
+			try {
+				return await this._resolveHtmlDownloadPage(
+					item,
+					nestedDownloadPage,
+					pageUrl,
+					this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(nestedDownloadPage),
+				);
+			} catch (candidateError) {
+				nestedError = candidateError;
+				cinder.log("[LibGen] Download-page candidate failed; trying the next candidate");
+			}
 		}
 
 		var doc = cinder.parseHTML(html);
@@ -620,6 +665,7 @@ __cinderExport = {
 			return formDownload;
 		}
 
+		if (nestedError) throw nestedError;
 		throw new Error("No fixture direct link or download form found.");
 	},
 };

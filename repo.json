@@ -428,7 +428,7 @@
                        {
                            "id":  "oceanofpdf",
                            "name":  "OceanofPDF",
-                           "version":  "0.1.5",
+                           "version":  "0.1.6",
                            "description":  "Download-source extension for OceanofPDF with separate EPUB/PDF results, a ReadRobe mirror fallback, and POST form downloads.",
                            "language":  "English",
                            "contentType":  "books",
@@ -442,7 +442,7 @@
                        {
                            "id":  "libgen",
                            "name":  "LibGen",
-                           "version":  "0.1.4",
+                           "version":  "0.1.6",
                            "description":  "Direct download-source extension for LibGen.",
                            "language":  "Multilingual",
                            "contentType":  "books",
