@@ -26,6 +26,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **Z-Library** | Books | Search, discover, and download ebooks through your Z-Library account. Created by Stick. |
 | **Bookracy** | Books | Search and download ebooks, comics, and manga from Bookracy's open library API. |
 | **LibGen** | Books | Direct download-source extension with on-device link resolution. |
+| **Mayberry** | Books | Search and download books from the federated Mayberry library network, with covers, metadata, and New Releases, New Arrivals, and Top Reads discovery shelves. |
 | **ElScione Server** | Books/Manga/Webnovels | Search an h5ai ebook and manga server for EPUB, PDF, CBZ, and CBR files. |
 | **OceanofPDF** | Books | Download-source extension with separate EPUB/PDF results and POST form downloads. |
 | **Royal Road** | Webnovels | Search chaptered fiction from Royal Road and package it into EPUB for reading in Cinder. |
@@ -59,6 +60,12 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
    https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/repo.json
    ```
 4. Browse and install extensions from the repository.
+
+### Mayberry migration
+
+Mayberry is now distributed from this public repository as `0.1.2-cinder`. It remains a multilingual **Books** extension with the same `mayberry` ID, search/download behavior, metadata, covers, and discovery shelves.
+
+If you installed it from the testing repository, keep this public repository added, refresh your repositories, and update Mayberry. If an older Cinder version does not offer a cross-repository update, select Mayberry in this repository and install/update it without uninstalling first. The extension ID and book IDs are unchanged.
 
 ## Building Extensions
 

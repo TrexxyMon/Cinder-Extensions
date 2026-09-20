@@ -3,6 +3,20 @@
     "author":  "CinderDev",
     "extensions":  [
                        {
+                           "id":  "mayberry",
+                           "name":  "Mayberry",
+                           "version":  "0.1.2-cinder",
+                           "description":  "Search and download EPUB books from the federated Mayberry library network.",
+                           "language":  "Multilingual",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/mayberry.js",
+                           "minCinderVersion":  "1.1.0",
+                           "contentTypes":  [
+                                                "ebook"
+                                            ],
+                           "excludeFromDefaultMetadataProviders":  true
+                       },
+                       {
                            "id":  "bookracy",
                            "name":  "Bookracy",
                            "version":  "0.1.2-cinder",
