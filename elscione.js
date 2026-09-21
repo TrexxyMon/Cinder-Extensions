@@ -2,11 +2,11 @@ var ElScioneSource = {};
 
 ElScioneSource.id = "elscione";
 ElScioneSource.name = "ElScione Server";
-ElScioneSource.version = "0.1.0-cinder";
+ElScioneSource.version = "0.1.1-cinder";
 ElScioneSource.icon = "ES";
 ElScioneSource.description = "Search ElScione's h5ai ebook and manga server for EPUB, PDF, CBZ, and CBR files.";
-ElScioneSource.contentType = "books";
-ElScioneSource.contentTypes = ["ebook", "manga", "webnovel"];
+ElScioneSource.contentType = "webnovel";
+ElScioneSource.contentTypes = ["webnovel", "manga"];
 ElScioneSource.contentSubtypes = ["lightNovel", "webFiction", "manga"];
 ElScioneSource.capabilities = {
     search: true,
@@ -51,7 +51,7 @@ ElScioneSource.ROOTS = [
         id: "official-light-novels",
         title: "Officially Translated Light Novels",
         href: "/Officially%20Translated%20Light%20Novels/",
-        contentType: "ebook",
+        contentType: "webnovel",
     },
     {
         id: "lnwncentral",
@@ -82,7 +82,7 @@ ElScioneSource.ROOTS = [
         id: "untranslated-light-novels",
         title: "Officially Untranslated Light Novels",
         href: "/%E3%83%A9%E3%82%A4%E3%83%88%E3%83%8E%E3%83%99%E3%83%AB%20-%20Officially%20Untranslated%20Light%20Novels/",
-        contentType: "ebook",
+        contentType: "webnovel",
         fallback: true,
     },
 ];

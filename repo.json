@@ -227,15 +227,14 @@
                        {
                            "id":  "readnovel",
                            "name":  "ReadNovelEU",
-                           "version":  "0.1.1-cinder",
+                           "version":  "0.1.2-cinder",
                            "description":  "Search and read chaptered web novels from ReadNovelEU, the current wuxiaworld.eu destination.",
                            "language":  "English",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/readnovel.js",
+                           "contentType":  "webnovel",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/readnovel.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
-                                                "webnovel",
-                                                "ebook"
+                                                "webnovel"
                                             ],
                            "contentSubtypes":  [
                                                    "webFiction",
@@ -248,15 +247,14 @@
                        {
                            "id":  "novelbin",
                            "name":  "NovelBin",
-                           "version":  "0.1.6-cinder",
+                           "version":  "0.1.7-cinder",
                            "description":  "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.",
                            "language":  "English",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/novelbin.js",
+                           "contentType":  "webnovel",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/novelbin.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
-                                                "webnovel",
-                                                "ebook"
+                                                "webnovel"
                                             ],
                            "contentSubtypes":  [
                                                    "webFiction",
@@ -269,15 +267,14 @@
                        {
                            "id":  "novelfire",
                            "name":  "Novel Fire",
-                           "version":  "0.1.8-cinder",
+                           "version":  "0.1.9-cinder",
                            "description":  "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.",
                            "language":  "English",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/novelfire.js",
+                           "contentType":  "webnovel",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/novelfire.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
-                                                "webnovel",
-                                                "ebook"
+                                                "webnovel"
                                             ],
                            "contentSubtypes":  [
                                                    "webFiction",
@@ -290,15 +287,14 @@
                        {
                            "id":  "webnovel",
                            "name":  "WebNovel",
-                           "version":  "0.1.3-cinder",
+                           "version":  "0.1.4-cinder",
                            "description":  "Search and read public chaptered web novels from WebNovel. Locked chapters are not bypassed.",
                            "language":  "English",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/webnovel.js",
+                           "contentType":  "webnovel",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/webnovel.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
-                                                "webnovel",
-                                                "ebook"
+                                                "webnovel"
                                             ],
                            "contentSubtypes":  [
                                                    "webFiction",
@@ -311,15 +307,14 @@
                        {
                            "id":  "witchculttranslation",
                            "name":  "Witch Cult Translations",
-                           "version":  "0.1.3",
+                           "version":  "0.1.4",
                            "description":  "Read public chaptered Re:Zero web novel fan translations from Witch Cult Translations and package arcs into EPUB on device. No debrid required.",
                            "language":  "English",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/witchculttranslation.js",
+                           "contentType":  "webnovel",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/witchculttranslation.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
-                                                "webnovel",
-                                                "ebook"
+                                                "webnovel"
                                             ],
                            "contentSubtypes":  [
                                                    "lightNovel",
@@ -329,14 +324,13 @@
                        {
                            "id":  "swaytranslations",
                            "name":  "Sway Translations",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Search Sway Translations WordPress pages for EPUB/PDF downloads.",
                            "language":  "English",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/swaytranslations.js",
+                           "contentType":  "webnovel",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/swaytranslations.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
-                                                "ebook",
                                                 "webnovel"
                                             ],
                            "contentSubtypes":  [
@@ -470,16 +464,15 @@
                        {
                            "id":  "elscione",
                            "name":  "ElScione Server",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Search ElScione\u0027s h5ai ebook and manga server for EPUB, PDF, CBZ, and CBR files.",
                            "language":  "Multilingual",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/elscione.js",
+                           "contentType":  "webnovel",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/elscione.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
-                                                "ebook",
-                                                "manga",
-                                                "webnovel"
+                                                "webnovel",
+                                                "manga"
                                             ],
                            "contentSubtypes":  [
                                                    "lightNovel",

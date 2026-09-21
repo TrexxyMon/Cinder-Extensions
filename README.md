@@ -27,14 +27,14 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **Bookracy** | Books | Search and download ebooks, comics, and manga from Bookracy's open library API. |
 | **LibGen** | Books | Direct download-source extension with on-device link resolution. |
 | **Mayberry** | Books | Search and download books from the federated Mayberry library network, with covers, metadata, and New Releases, New Arrivals, and Top Reads discovery shelves. |
-| **ElScione Server** | Books/Manga/Webnovels | Search an h5ai ebook and manga server for EPUB, PDF, CBZ, and CBR files. |
+| **ElScione Server** | Web & Light Novels/Manga | Search an h5ai ebook and manga server for EPUB, PDF, CBZ, and CBR files. |
 | **OceanofPDF** | Books | Download-source extension with separate EPUB/PDF results and POST form downloads. |
 | **Royal Road** | Webnovels | Search chaptered fiction from Royal Road and package it into EPUB for reading in Cinder. |
-| **ReadNovelEU** | Books | Search and read chaptered web novels from the current WuxiaWorld destination. |
-| **NovelBin** | Books/Webnovels | Search public chaptered web novels and build EPUBs on device. No debrid required. |
-| **Novel Fire** | Books/Webnovels | Search public chaptered web novels and build EPUBs on device. No debrid required. |
-| **WebNovel** | Books | Search and read public chaptered web novels from WebNovel; locked chapters are not bypassed. |
-| **Witch Cult Translations** | Books/Webnovels | Read public chaptered Re:Zero web novel fan translations and package arcs into EPUB on device. |
+| **ReadNovelEU** | Web & Light Novels | Search and read chaptered web novels from the current WuxiaWorld destination. |
+| **NovelBin** | Web & Light Novels | Search public chaptered web novels and build EPUBs on device. No debrid required. |
+| **Novel Fire** | Web & Light Novels | Search public chaptered web novels and build EPUBs on device. No debrid required. |
+| **WebNovel** | Web & Light Novels | Search and read public chaptered web novels from WebNovel; locked chapters are not bypassed. |
+| **Witch Cult Translations** | Web & Light Novels | Read public chaptered Re:Zero web novel fan translations and package arcs into EPUB on device. |
 | **Luminare Translations** | Books/Webnovels | Search public light novels, load rich metadata and covers, and build available chapters with illustrations into EPUB. No debrid required. |
 | **BronsTL** | Books/Webnovels | Search public light novels, load metadata and covers, and build available chapters with illustrations into EPUB. No debrid required. |
 | **Literotica** | Webnovels | Search adult fiction and build public stories into EPUB on device. No debrid required. |
@@ -48,7 +48,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **GoComics** | Comics | Read daily comic strips from GoComics, Comics Kingdom, ComicsRSS, and more. Credit to Tonynks for the source extension. |
 | **ComicHubFree** | Comics | Search and read western comics from ComicHubFree. |
 | **BatCave** | Comics | Search and discover western comics, browse issue lists, and stream chapter pages. No debrid required. |
-| **Sway Translations** | Books/Webnovels | Search WordPress novel pages for EPUB/PDF downloads. |
+| **Sway Translations** | Web & Light Novels | Search WordPress novel pages for EPUB/PDF downloads. |
 | **BBato** | Manga | Read manga, manhwa, and manhua from BBato. |
 
 ## How To Install

@@ -1,11 +1,11 @@
 __cinderExport = {
     id: "webnovel",
     name: "WebNovel",
-    version: "0.1.3-cinder",
+    version: "0.1.4-cinder",
     icon: "WN",
     description: "Search and read public chaptered web novels from WebNovel. Locked chapters are not bypassed.",
-    contentType: "books",
-    contentTypes: ["webnovel", "ebook"],
+    contentType: "webnovel",
+    contentTypes: ["webnovel"],
     contentSubtypes: ["webFiction", "lightNovel", "wuxia", "xianxia", "xuanhuan"],
 
     capabilities: {

@@ -2,11 +2,11 @@ var SwayTranslationsSource = {};
 
 SwayTranslationsSource.id = "swaytranslations";
 SwayTranslationsSource.name = "Sway Translations";
-SwayTranslationsSource.version = "0.1.0-cinder";
+SwayTranslationsSource.version = "0.1.1-cinder";
 SwayTranslationsSource.icon = "ST";
 SwayTranslationsSource.description = "Search Sway Translations WordPress pages for EPUB/PDF downloads.";
-SwayTranslationsSource.contentType = "books";
-SwayTranslationsSource.contentTypes = ["ebook", "webnovel"];
+SwayTranslationsSource.contentType = "webnovel";
+SwayTranslationsSource.contentTypes = ["webnovel"];
 SwayTranslationsSource.contentSubtypes = ["lightNovel", "webFiction"];
 SwayTranslationsSource.capabilities = {
     search: true,
@@ -544,4 +544,3 @@ SwayTranslationsSource.resolve = async function(item) {
 };
 
 __cinderExport = SwayTranslationsSource;
-

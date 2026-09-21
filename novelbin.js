@@ -2,11 +2,11 @@ var NovelBinSource = {};
 
 NovelBinSource.id = "novelbin";
 NovelBinSource.name = "NovelBin";
-NovelBinSource.version = "0.1.6-cinder";
+NovelBinSource.version = "0.1.7-cinder";
 NovelBinSource.icon = "NB";
 NovelBinSource.description = "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.";
-NovelBinSource.contentType = "books";
-NovelBinSource.contentTypes = ["webnovel", "ebook"];
+NovelBinSource.contentType = "webnovel";
+NovelBinSource.contentTypes = ["webnovel"];
 NovelBinSource.contentSubtypes = ["webFiction", "lightNovel", "wuxia", "xianxia", "xuanhuan"];
 NovelBinSource.capabilities = {
 	search: true,

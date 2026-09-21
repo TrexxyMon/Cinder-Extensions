@@ -2,11 +2,11 @@ var NovelFireSource = {};
 
 NovelFireSource.id = "novelfire";
 NovelFireSource.name = "Novel Fire";
-NovelFireSource.version = "0.1.8-cinder";
+NovelFireSource.version = "0.1.9-cinder";
 NovelFireSource.icon = "NF";
 NovelFireSource.description = "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.";
-NovelFireSource.contentType = "books";
-NovelFireSource.contentTypes = ["webnovel", "ebook"];
+NovelFireSource.contentType = "webnovel";
+NovelFireSource.contentTypes = ["webnovel"];
 NovelFireSource.contentSubtypes = ["webFiction", "lightNovel", "wuxia", "xianxia", "xuanhuan"];
 NovelFireSource.capabilities = {
 	search: true,

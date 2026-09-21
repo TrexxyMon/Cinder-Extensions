@@ -1,11 +1,11 @@
 __cinderExport = {
     id: "readnovel",
     name: "ReadNovelEU",
-    version: "0.1.1-cinder",
+    version: "0.1.2-cinder",
     icon: "RN",
     description: "Search and read chaptered web novels from ReadNovelEU, the current wuxiaworld.eu destination.",
-    contentType: "books",
-    contentTypes: ["webnovel", "ebook"],
+    contentType: "webnovel",
+    contentTypes: ["webnovel"],
     contentSubtypes: ["webFiction", "lightNovel", "wuxia", "xianxia", "xuanhuan"],
 
     capabilities: {

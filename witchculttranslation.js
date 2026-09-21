@@ -1,11 +1,11 @@
 __cinderExport = {
     id: "witchculttranslation",
     name: "Witch Cult Translations",
-    version: "0.1.3",
+    version: "0.1.4",
     icon: "WC",
     description: "Read public chaptered Re:Zero web novel fan translations from Witch Cult Translations and package arcs into EPUB on device. No debrid required.",
-    contentType: "books",
-    contentTypes: ["webnovel", "ebook"],
+    contentType: "webnovel",
+    contentTypes: ["webnovel"],
     contentSubtypes: ["lightNovel", "webFiction"],
 
     capabilities: {
