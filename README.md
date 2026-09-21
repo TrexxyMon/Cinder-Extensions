@@ -1,4 +1,4 @@
-﻿# Cinder Extensions
+﻿# Cinder Reader Extensions
 
 Community extension repository for the Cinder ebook reader.
 
