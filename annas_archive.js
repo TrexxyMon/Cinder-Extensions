@@ -6,7 +6,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.10",
+	version: "2.1.12",
 	icon: "📚",
 	description: "Anna's Archive direct downloader powered entirely by your device, with no backend infrastructure.",
 	contentType: "books",
@@ -360,31 +360,13 @@ __cinderExport = {
 		// ── Strategy 1: AA Supporter Key (fast_download) ──
 		try {
 			var supporterKey = await cinder.secureStore.get("aa_supporter_key");
-			if (supporterKey && supporterKey.trim()) {
-				supporterKey = supporterKey.trim();
-				cinder.log("[AA] 🔑 Trying fast_download with supporter key...");
-				var baseUrl = await this._getBaseUrl();
-
-				var fastUrl = baseUrl + "/fast_download/" + md5 + "/0/2?secret=" + encodeURIComponent(supporterKey);
-				var fastResp = await this._smartFetch(fastUrl);
-
-				if (fastResp.status === 200 && fastResp.data && fastResp.data.length > 500) {
-					var downloadUrl = this._extractDownloadUrl(fastResp.data);
-					if (downloadUrl) {
-						cinder.log("[AA] 🚀 Supporter download resolved: " + downloadUrl.substring(0, 80));
-						return {
-							url: downloadUrl,
-							headers: {
-								"Referer": fastUrl,
-								"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-							},
-						};
-					}
-				}
-				cinder.warn("[AA] Supporter download failed (status " + fastResp.status + "), falling through");
+			if (typeof supporterKey === "string" && supporterKey.trim()) {
+				var supporterDownload = await this._resolveSupporterDownload(md5, supporterKey.trim());
+				if (supporterDownload) return supporterDownload;
 			}
 		} catch (fastErr) {
-			cinder.warn("[AA] Supporter download error: " + fastErr);
+			// Network exceptions can contain the full authenticated request URL.
+			cinder.warn("[AA] Supporter download unavailable; trying normal mirrors");
 		}
 
 		// ── Strategy 2+3: Libgen CDN + Detail Page IN PARALLEL ──
@@ -616,6 +598,79 @@ __cinderExport = {
 		}
 
 		return null;
+	},
+
+	/** Member API contract: /dyn/api/fast_download.json (self-documenting JSON). */
+	_resolveSupporterDownload: async function(md5, key) {
+		if (!/^[a-f0-9]{32}$/i.test(md5)) return null;
+		var baseUrl = await this._getBaseUrl();
+		// A saved/custom setting must never redirect an account key to another host.
+		if (this._BASE_DOMAINS.indexOf(baseUrl.replace(/^https:\/\//, "")) === -1) return null;
+		try {
+			cinder.log("[AA] Trying supporter download API");
+			// Do not hard-code a collection/server index. Let the API pick one.
+			// Do not pass this URL to _smartFetch: it logs URLs and expects HTML.
+			var response = await cinder.fetch(baseUrl + "/dyn/api/fast_download.json?md5=" +
+				encodeURIComponent(md5) + "&key=" + encodeURIComponent(key), {
+				headers: { "Accept": "application/json" }, timeout: 12000,
+			});
+			var status = Number(response && response.status);
+			if (status !== 200 && status !== 204) {
+				cinder.warn("[AA] Supporter API unavailable (HTTP " + (status || 0) + "); trying normal mirrors");
+				return null;
+			}
+			var data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
+			var url = data && !data.error && data.download_url;
+			// Preserve signed URL bytes exactly: JSON strings are not HTML attributes.
+			if (typeof url !== "string" || !/^https:\/\/[a-z0-9][a-z0-9.-]*(?::\d+)?\/[^\s<>"\\]*$/i.test(url)) {
+				cinder.warn("[AA] Supporter API did not return a secure file URL; trying normal mirrors");
+				return null;
+			}
+			var referer = baseUrl + "/md5/" + md5;
+			if (!(await this._validateDirectDownloadUrl(url, referer))) {
+				cinder.warn("[AA] Supporter file endpoint unavailable; trying normal mirrors");
+				return null;
+			}
+			cinder.log("[AA] Supporter download resolved through API");
+			return { url: url, headers: {
+				"Referer": referer,
+				"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+			} };
+		} catch (error) {
+			// Never log response bodies, signed links, or exceptions containing the key.
+			cinder.warn("[AA] Supporter API request failed; trying normal mirrors");
+			return null;
+		}
+	},
+
+	/**
+	 * Rejects a definitively dead resolved file endpoint before it can win the
+	 * mirror race. Hosts that do not support HEAD remain eligible so older and
+	 * unusual mirrors keep their previous behavior.
+	 */
+	_validateDirectDownloadUrl: async function(url, referer) {
+		try {
+			var probe = await cinder.fetch(url, {
+				method: "HEAD",
+				headers: {
+					"Referer": referer || "https://annas-archive.gd/",
+					"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+					"Accept": "application/epub+zip,application/pdf,application/octet-stream,*/*;q=0.9",
+				},
+				timeout: 6000,
+			});
+			var status = Number(probe && probe.status) || 0;
+			if (status === 0 || status === 403 || status === 405) return true;
+			if (status < 200 || status >= 400) return false;
+			var headers = (probe && probe.headers) || {};
+			var contentType = String(headers["content-type"] || headers["Content-Type"] || "").toLowerCase();
+			return contentType.indexOf("text/html") === -1 &&
+				contentType.indexOf("application/json") === -1 &&
+				contentType.indexOf("text/plain") === -1;
+		} catch (error) {
+			// An inconclusive probe must not remove a mirror that older builds could use.
+			return true;
+		}
 	},
 
 	/**
