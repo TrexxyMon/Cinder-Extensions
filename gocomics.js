@@ -1,10 +1,10 @@
 // Comics Extension for Cinder (powered by ComicsRSS)
-// Version 3.3.0 – extracts all slugs from comicsrss.com, titles derived from slug
+// ComicsRSS catalog + live public GoComics pages; existing comic/chapter IDs are retained.
 
 __cinderExport = {
   id: "gocomics",
   name: "GoComics",
-  version: "3.3.2",
+  version: "3.3.3",
   icon: "🗞️",
   description: "Read 600+ daily comic strips via ComicsRSS – GoComics, Comics Kingdom, Wumo, Life on Earth, and more.",
   contentType: "comics",
@@ -25,6 +25,11 @@ __cinderExport = {
 
   _comicsCache: null,
   _comicsLoading: null,
+  _comicsExpires: 0,
+  _feedCache: {},
+  _feedLoading: {},
+  _stripCache: {},
+  _stripLoading: {},
 
   COMICS_FALLBACK: [
     { id: "calvinandhobbes",   title: "Calvin and Hobbes" },
@@ -51,6 +56,7 @@ __cinderExport = {
   // -------------------------
 
   _getSetting: function(key, fallback) {
+    if (!cinder.secureStore || !cinder.secureStore.get) return Promise.resolve(fallback);
     return cinder.secureStore.get(key).then(function(value) {
       return value || fallback;
     }).catch(function() {
@@ -85,6 +91,7 @@ __cinderExport = {
     return {
       id: c.id,
       title: c.title,
+      author: c.author || undefined,
       cover: "https://avatar.gocomics.com/" + c.id + "/avatar_256.jpg",
       url: this.RSS_BASE + "/" + c.id + ".rss",
       format: "manga",
@@ -96,6 +103,51 @@ __cinderExport = {
   _isBlocked: function(h) {
     return !h || h.indexOf("bunny-shield") !== -1 || h.indexOf("shield-challenge") !== -1 ||
       h.indexOf("Establishing a secure connection") !== -1 || h.indexOf("data-pow=") !== -1;
+  },
+
+  _decode: function(value) {
+    function codePoint(number) {
+      return isFinite(number) && number >= 0 && number <= 0x10ffff ? String.fromCodePoint(number) : "\ufffd";
+    }
+    return String(value || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+      .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"').replace(/&apos;|&#0*39;/gi, "'")
+      .replace(/&#x([0-9a-f]+);/gi, function(_, n) { return codePoint(parseInt(n, 16)); })
+      .replace(/&#([0-9]+);/g, function(_, n) { return codePoint(Number(n)); })
+      .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&");
+  },
+
+  _text: function(value) {
+    return this._decode(String(value || "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+  },
+
+  _searchKey: function(value) {
+    var text = this._text(value).toLowerCase().replace(/&/g, "and");
+    if (text.normalize) text = text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+    return text.replace(/[^a-z0-9]/g, "");
+  },
+
+  _validSlug: function(slug) {
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(String(slug || ""))) throw new Error("Invalid comic ID.");
+    return String(slug).toLowerCase();
+  },
+
+  _datePath: function(value) {
+    var match = String(value || "").match(/\b(\d{4})[/-](\d{2})[/-](\d{2})\b/);
+    var date = match ? new Date(Date.UTC(+match[1], +match[2] - 1, +match[3])) : new Date(value);
+    if (!isFinite(date.getTime())) return "";
+    var result = date.toISOString().slice(0, 10).replace(/-/g, "/");
+    return match && result !== match[1] + "/" + match[2] + "/" + match[3] ? "" : result;
+  },
+
+  _remember: function(cache, key, value) {
+    cache[key] = { value: value, expires: Date.now() + 5 * 60 * 1000 };
+    var keys = Object.keys(cache);
+    if (keys.length > 24) {
+      keys.sort(function(a, b) { return cache[a].expires - cache[b].expires; });
+      delete cache[keys[0]];
+    }
+    return value;
   },
 
   // Convert slug to readable title
@@ -118,7 +170,22 @@ __cinderExport = {
 
   _parseComicsRssIndex: function(text) {
     var seen = {};
-    var slugs = [];
+    var comics = [];
+    // The catalog provides proper titles/authors. Slug-only titles made spaced
+    // searches such as "Calvin and Hobbes" fail on a freshly loaded catalog.
+    var cardRe = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+    var card;
+    while ((card = cardRe.exec(text)) !== null) {
+      var rss = card[1].match(/\/rss\/([a-z0-9][a-z0-9._-]*)\.rss/i);
+      var label = card[1].match(/<div\b[^>]*class=["'][^"']*\bellipsis\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+      if (!rss || !label || seen[rss[1].toLowerCase()]) continue;
+      var author = (label[1].match(/<small\b[^>]*>([\s\S]*?)<\/small>/i) || [])[1];
+      var id = rss[1].toLowerCase();
+      var title = this._text(label[1].replace(/<small\b[^>]*>[\s\S]*?<\/small>/gi, ""));
+      if (!title) continue;
+      seen[id] = true;
+      comics.push({ id: id, title: title, author: this._text(author).replace(/^by\s+/i, "") });
+    }
 
     // Match any occurrence of /rss/SLUG.rss in the page
     var re = /\/rss\/([a-z0-9][a-z0-9._-]*[a-z0-9])\.rss/gi;
@@ -129,16 +196,12 @@ __cinderExport = {
       if (!id || id === "." || id.length < 2) continue;
       if (!seen[id]) {
         seen[id] = true;
-        slugs.push(id);
+        var known = this.COMICS_FALLBACK.find(function(c) { return c.id === id; });
+        comics.push({ id: id, title: known ? known.title : this._slugToTitle(id) });
       }
     }
 
-    if (slugs.length < 10) return [];
-
-    var self = this;
-    return slugs.map(function(id) {
-      return { id: id, title: self._slugToTitle(id) };
-    }).sort(function(a, b) {
+    return comics.sort(function(a, b) {
       return a.title.localeCompare(b.title);
     });
   },
@@ -149,21 +212,25 @@ __cinderExport = {
 
   _loadComics: function() {
     var self = this;
-    if (self._comicsCache) return Promise.resolve(self._comicsCache);
+    if (self._comicsCache && self._comicsExpires > Date.now()) return Promise.resolve(self._comicsCache);
     if (self._comicsLoading) return self._comicsLoading;
 
     self._comicsLoading = cinder.fetch(self.COMICS_RSS_INDEX, {
       headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html,*/*" },
+      timeout: 10000,
     }).then(function(r) {
       if (r.status === 200 && r.data) {
         var comics = self._parseComicsRssIndex(r.data);
-        if (comics.length > 50) return comics;
+        if (comics.length) return comics;
       }
       return self.COMICS_FALLBACK;
     }).catch(function() {
       return self.COMICS_FALLBACK;
     }).then(function(result) {
       self._comicsCache = result;
+      // A temporary Android/network failure must not lock this runtime to the
+      // tiny fallback list until the app is restarted.
+      self._comicsExpires = Date.now() + (result === self.COMICS_FALLBACK ? 30000 : 3600000);
       self._comicsLoading = null;
       return result;
     });
@@ -175,47 +242,119 @@ __cinderExport = {
   // Image extractors
   // -------------------------
 
-  _extractImageUrl: function(html) {
-    var nd = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
-    if (nd) {
-      try {
-        var s = JSON.stringify(JSON.parse(nd[1]));
-        var fa = s.match(/"(https:\\\/\\\/featureassets\.gocomics\.com\\\/assets\\\/[a-f0-9]{20,})"/i);
-        if (fa) return fa[1].replace(/\\\//g, "/");
-        var am = s.match(/"(https:\\\/\\\/assets\.amuniversal\.com\\\/[a-f0-9]{20,})"/i);
-        if (am) return am[1].replace(/\\\//g, "/");
-      } catch (e) {}
+  _imageUrl: function(value) {
+    var url = this._decode(value).trim();
+    return /^https?:\/\/[^\s<>"']+$/i.test(url) ? url.replace(/^http:\/\//i, "https://") : "";
+  },
+
+  _parseFeed: function(xml) {
+    var self = this;
+    function tag(block, name) {
+      var match = block.match(new RegExp("<" + name + "\\b[^>]*>([\\s\\S]*?)</" + name + ">", "i"));
+      return match ? self._decode(match[1]).trim() : "";
     }
-    var og = html.match(/property=["']og:image["'][^>]*content=["'](https?:\/\/[^"'?]+(?:featureassets|amuniversal)[^"'?]*)/i)
-           || html.match(/content=["'](https?:\/\/[^"'?]+(?:featureassets|amuniversal)[^"'?]*)[^>]*property=["']og:image["']/i);
-    if (og) return og[1];
-    var fa2 = html.match(/https:\/\/featureassets\.gocomics\.com\/assets\/([a-f0-9]{20,})/i);
-    if (fa2) return "https://featureassets.gocomics.com/assets/" + fa2[1];
-    var am2 = html.match(/https?:\/\/assets\.amuniversal\.com\/([a-f0-9]{20,})/i);
-    if (am2) return "https://assets.amuniversal.com/" + am2[1];
-    return null;
+    var channel = String(xml || "").split(/<item\b/i)[0];
+    var entries = [], seen = {}, itemRe = /<item\b[^>]*>([\s\S]*?)<\/item>/gi, match;
+    while ((match = itemRe.exec(xml)) !== null) {
+      var item = match[1], link = tag(item, "link");
+      var content = tag(item, "description");
+      var image = (content.match(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i) || [])[1];
+      if (!image) image = (item.match(/<enclosure\b[^>]*\burl=["']([^"']+)["']/i) || [])[1];
+      image = self._imageUrl(image);
+      // Arcamax/Comics Kingdom use opaque story URLs, not /YYYY/MM/DD.
+      var datePath = self._datePath((link.match(/\d{4}[/-]\d{2}[/-]\d{2}/) || [])[0] || tag(item, "pubDate"));
+      if (!image || !datePath || seen[datePath]) continue;
+      seen[datePath] = true;
+      entries.push({ datePath: datePath, url: image, link: link, title: self._text(tag(item, "title")) });
+    }
+    entries.sort(function(a, b) { return b.datePath.localeCompare(a.datePath); });
+    return { sourceUrl: tag(channel, "link"), entries: entries };
   },
 
   _extractImageFromRss: function(xml, datePath) {
-    var items = xml.split(/<item[\s>]/i);
-    for (var i = 1; i < items.length; i++) {
-      var item = items[i];
-      if (datePath) {
-        var linkMatch = item.match(/<link[^>]*>\s*([^\s<]+)\s*<\/link>/i);
-        if (!linkMatch || linkMatch[1].indexOf(datePath) === -1) continue;
+    var entries = this._parseFeed(xml).entries;
+    var entry = entries.find(function(item) { return !datePath || item.datePath === datePath; });
+    return entry ? entry.url : null;
+  },
+
+  _loadFeed: function(slug) {
+    var self = this, cached = self._feedCache[slug];
+    if (cached && cached.expires > Date.now()) return Promise.resolve(cached.value);
+    if (self._feedLoading[slug]) return self._feedLoading[slug];
+    var task = cinder.fetch(self.RSS_BASE + "/" + slug + ".rss", {
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/rss+xml,application/xml,*/*" }, timeout: 8000,
+    }).then(function(r) {
+      if (!r || r.status !== 200 || !/<rss\b/i.test(r.data || "")) {
+        throw new Error("ComicsRSS feed could not be loaded" + (r ? " (HTTP " + r.status + ")" : "") + ".");
       }
-      var descMatch = item.match(/<description[^>]*>([\s\S]*?)<\/description>/i);
-      if (descMatch) {
-        var content = descMatch[1].replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "");
-        var imgMatch = content.match(/<img[^>]+src=["']([^"']+)["']/i);
-        if (imgMatch) return imgMatch[1];
-        var urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(jpg|jpeg|png|gif|webp)[^\s"'<>]*/i);
-        if (urlMatch) return urlMatch[0];
+      return self._remember(self._feedCache, slug, self._parseFeed(r.data));
+    });
+    self._feedLoading[slug] = task.then(function(feed) { delete self._feedLoading[slug]; return feed; }, function(error) {
+      delete self._feedLoading[slug]; throw error;
+    });
+    return self._feedLoading[slug];
+  },
+
+  _extractOfficialStrip: function(html, datePath) {
+    // Current GoComics includes the main strip before recommendation strips in
+    // JSON-LD. Never accept a random asset, social card, or a different date.
+    var blocks = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi, match;
+    while ((match = blocks.exec(html)) !== null) {
+      var data;
+      try { data = JSON.parse(match[1]); } catch (_) { continue; }
+      if (!data || typeof data !== "object") continue;
+      var nodes = Array.isArray(data) ? data : (Array.isArray(data["@graph"]) ? data["@graph"] : [data]);
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (!node || node["@type"] !== "ImageObject") continue;
+        var url = this._imageUrl(node.contentUrl || node.url);
+        if (!/^https:\/\/(?:featureassets\.gocomics\.com\/assets|assets\.amuniversal\.com)\/[a-f0-9]{20,}(?:\?|$)/i.test(url)) continue;
+        var published = this._datePath(node.datePublished);
+        if (!published || (datePath && published !== datePath)) return null;
+        return { url: url, datePath: published };
       }
-      var encMatch = item.match(/<enclosure[^>]+url=["']([^"']+)["']/i);
-      if (encMatch) return encMatch[1];
     }
     return null;
+  },
+
+  _extractImageUrl: function(html, datePath) {
+    var strip = this._extractOfficialStrip(html, datePath);
+    return strip ? strip.url : null;
+  },
+
+  _loadOfficialStrip: function(slug, datePath) {
+    var self = this, key = slug + "|" + (datePath || "latest"), cached = self._stripCache[key];
+    if (cached && cached.expires > Date.now()) return Promise.resolve(cached.value);
+    if (self._stripLoading[key]) return self._stripLoading[key];
+    var url = self.BASE_URL + "/" + slug + (datePath ? "/" + datePath : "");
+    var task = self._headers().then(async function(headers) {
+      var response = null, strip = null;
+      try { response = await cinder.fetch(url, { headers: headers, timeout: 8000 }); } catch (_) {}
+      if (response && response.status === 200 && !self._isBlocked(response.data)) strip = self._extractOfficialStrip(response.data, datePath);
+      if (!strip && typeof cinder.fetchBrowser === "function") {
+        // Use the device browser identity; don't impose an Android UA on iOS.
+        var browserHeaders = {
+          "Referer": self.BASE_URL + "/", "X-Cinder-Suppress-Interactive": "1",
+          "X-Cinder-Wait-For-Selector": 'button[aria-label="Expand comic"] img',
+          "X-Cinder-Max-Wait-Ms": "14000",
+        };
+        if (headers.Cookie) browserHeaders.Cookie = headers.Cookie;
+        try { response = await cinder.fetchBrowser(url, { headers: browserHeaders, browserUserAgent: "desktop", timeout: 18000 }); } catch (_) { response = null; }
+        if (response && response.status === 200 && !self._isBlocked(response.data)) strip = self._extractOfficialStrip(response.data, datePath);
+      }
+      if (!strip) {
+        if (!response || response.status === 403 || response.status === 429 || self._isBlocked(response.data)) {
+          throw new Error("GoComics could not load the comic page (site verification or network failure). Please try again later or check access on the source website.");
+        }
+        throw new Error("GoComics did not provide a public strip for this date. It may be unavailable or require an account; a different strip will not be substituted.");
+      }
+      self._remember(self._stripCache, slug + "|" + strip.datePath, strip);
+      return self._remember(self._stripCache, key, strip);
+    });
+    self._stripLoading[key] = task.then(function(strip) { delete self._stripLoading[key]; return strip; }, function(error) {
+      delete self._stripLoading[key]; throw error;
+    });
+    return self._stripLoading[key];
   },
 
   // -------------------------
@@ -224,13 +363,14 @@ __cinderExport = {
 
   search: function(query, page) {
     var self = this;
-    var q = query.toLowerCase().trim();
+    var q = self._searchKey(query);
+    var start = Math.max(0, Math.floor(Number(page) || 0)) * 30;
     return self._loadComics().then(function(comics) {
       return comics
         .filter(function(c) {
-          return c.title.toLowerCase().indexOf(q) !== -1 || c.id.toLowerCase().indexOf(q) !== -1;
+          return self._searchKey(c.title + " " + (c.author || "")).indexOf(q) !== -1 || self._searchKey(c.id).indexOf(q) !== -1;
         })
-        .slice(0, 30)
+        .slice(start, start + 30)
         .map(function(c) { return self._comicToResult(c); });
     });
   },
@@ -248,6 +388,7 @@ __cinderExport = {
 
   getDiscoverItems: function(sectionId, page) {
     var self = this;
+    if (Number(page) > 0 || (sectionId !== "popular" && sectionId !== "classics")) return Promise.resolve([]);
     var popularIds = [
       "peanuts", "garfield", "calvinandhobbes", "pickles", "pearlsbeforeswine",
       "babyblues", "zits", "foxtrot", "doonesbury", "bloomcounty",
@@ -277,11 +418,13 @@ __cinderExport = {
 
   getMangaDetails: function(slug) {
     var self = this;
+    slug = self._validSlug(slug);
     return self._loadComics().then(function(comics) {
       var local = comics.find(function(c) { return c.id === slug; });
       return {
         id: slug,
         title: local ? local.title : self._slugToTitle(slug),
+        author: local ? local.author : undefined,
         cover: slug === "xkcd"
           ? "https://xkcd.com/s/0b7742.png"
           : "https://avatar.gocomics.com/" + slug + "/avatar_256.jpg",
@@ -297,30 +440,49 @@ __cinderExport = {
   // -------------------------
 
   getChapters: function(slug) {
+    var self = this;
+    slug = self._validSlug(slug);
     if (slug === "xkcd") {
       return cinder.fetch("https://xkcd.com/info.0.json", {
-        headers: { "Accept": "application/json" },
+        headers: { "Accept": "application/json" }, timeout: 10000,
       }).then(function(r) {
-        var latest = 3000;
+        var latest = 0;
         try { if (r.status === 200) latest = JSON.parse(r.data).num; } catch(e) {}
+        if (!Number.isInteger(latest) || latest < 1) throw new Error("xkcd could not load its current comic list. Please try again.");
         var chapters = [];
         for (var i = latest; i >= Math.max(1, latest - 99); i--) {
           chapters.push({ id: "xkcd|" + i, title: "Comic #" + i, chapterNumber: i, dateUploaded: "" });
         }
         return chapters;
-      }).catch(function() { return []; });
+      });
     }
 
+    return self._loadFeed(slug).then(async function(feed) {
+      if (/^https?:\/\/(?:www\.)?gocomics\.com\//i.test(feed.sourceUrl)) {
+        // These RSS feeds stopped in June 2025. Anchor the existing two-year
+        // archive to the site's actual latest strip, not the device clock.
+        var latest = await self._loadOfficialStrip(slug, "");
+        return self._calendarChapters(slug, latest.datePath);
+      }
+      if (!feed.entries.length) throw new Error("This comic's RSS feed has no available strips.");
+      return feed.entries.map(function(entry, i) {
+        return { id: slug + "|" + entry.datePath, title: entry.title || entry.datePath,
+          chapterNumber: feed.entries.length - i, dateUploaded: entry.datePath.replace(/\//g, "-") };
+      });
+    });
+  },
+
+  _calendarChapters: function(slug, latestDate) {
     var chapters = [];
-    var today = new Date();
+    var today = new Date(latestDate.replace(/\//g, "-") + "T12:00:00Z");
     for (var i = 0; i < 730; i++) {
       var d = new Date(today);
-      d.setDate(today.getDate() - i);
-      var year  = d.getFullYear();
-      var month = String(d.getMonth() + 1).padStart(2, "0");
-      var day   = String(d.getDate()).padStart(2, "0");
+      d.setUTCDate(today.getUTCDate() - i);
+      var year  = d.getUTCFullYear();
+      var month = String(d.getUTCMonth() + 1).padStart(2, "0");
+      var day   = String(d.getUTCDate()).padStart(2, "0");
       var dateStr = year + "/" + month + "/" + day;
-      var display = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      var display = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()] + " " + d.getUTCDate() + ", " + year;
       chapters.push({
         id: slug + "|" + dateStr,
         title: display,
@@ -328,76 +490,55 @@ __cinderExport = {
         dateUploaded: d.toISOString().split("T")[0],
       });
     }
-    return Promise.resolve(chapters);
+    return chapters;
   },
 
   // -------------------------
   // Pages
   // -------------------------
 
-  getPages: function(chapterId) {
+  getPages: async function(chapterId) {
     var self = this;
-    var parts = chapterId.split("|");
-    if (parts.length !== 2) return Promise.resolve([]);
-    var slug  = parts[0];
+    var parts = String(chapterId || "").split("|");
+    if (parts.length !== 2) throw new Error("Invalid comic chapter ID.");
+    var slug  = self._validSlug(parts[0]);
     var param = parts[1];
 
     if (slug === "xkcd") {
+      if (!/^[1-9]\d*$/.test(param)) throw new Error("Invalid xkcd comic number.");
       return cinder.fetch("https://xkcd.com/" + param + "/info.0.json", {
-        headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" },
+        headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" }, timeout: 10000,
       }).then(function(r) {
         try {
           if (r.status === 200) {
             var d = JSON.parse(r.data);
-            if (d.img) return [{ url: d.img }];
+            if (self._imageUrl(d.img)) return [{ url: self._imageUrl(d.img) }];
           }
         } catch(e) {}
-        return [];
-      }).catch(function() { return []; });
+        throw new Error("xkcd did not provide a page for this comic.");
+      });
     }
 
-    // TIER 1: ComicsRSS – slug IS the RSS filename, always exact
-    return cinder.fetch(self.RSS_BASE + "/" + slug + ".rss", {
-      headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" },
-    }).then(function(r) {
-      if (r.status === 200 && r.data) {
-        var imgUrl = self._extractImageFromRss(r.data, param);
-        if (imgUrl) return [{ url: imgUrl }];
+    if (!/^\d{4}\/\d{2}\/\d{2}$/.test(param) || self._datePath(param) !== param) throw new Error("Invalid comic date.");
+    var cached = self._stripCache[slug + "|" + param];
+    if (cached && cached.expires > Date.now()) return [{ url: cached.value.url }];
+    var feed = null;
+    try { feed = await self._loadFeed(slug); } catch (error) {
+      // Never guess a different publisher when RSS is offline. A previously
+      // verified feed may still identify this source safely for the fallback.
+      var previous = self._feedCache[slug];
+      if (!previous) throw error;
+      feed = previous.value;
+    }
+    if (feed) {
+      var entry = feed.entries.find(function(item) { return item.datePath === param; });
+      if (entry) return [{ url: entry.url }];
+      if (!/^https?:\/\/(?:www\.)?gocomics\.com\//i.test(feed.sourceUrl)) {
+        throw new Error("This date is no longer available in the comic's RSS feed. Please choose one of its listed dates.");
       }
-      return null;
-    }).catch(function() { return null; })
-
-    // TIER 2: GoComics direct, no headers
-    .then(function(result) {
-      if (result) return result;
-      return cinder.fetch(self.BASE_URL + "/" + slug + "/" + param, {
-        headers: {},
-      }).then(function(r) {
-        if (r.status === 200 && !self._isBlocked(r.data)) {
-          var url = self._extractImageUrl(r.data);
-          if (url) return [{ url: url }];
-        }
-        return null;
-      }).catch(function() { return null; });
-    })
-
-    // TIER 3: GoComics with spoofed headers
-    .then(function(result) {
-      if (result) return result;
-      return self._headers().then(function(headers) {
-        return cinder.fetch(self.BASE_URL + "/" + slug + "/" + param, {
-          headers: headers,
-        });
-      }).then(function(r) {
-        if (r.status === 200 && !self._isBlocked(r.data)) {
-          var url = self._extractImageUrl(r.data);
-          if (url) return [{ url: url }];
-        }
-        return null;
-      }).catch(function() { return null; });
-    })
-
-    .then(function(result) { return result || []; });
+    }
+    var strip = await self._loadOfficialStrip(slug, param);
+    return [{ url: strip.url }];
   },
 
   // -------------------------
