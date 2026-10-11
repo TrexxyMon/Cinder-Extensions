@@ -28,7 +28,9 @@ function feed(entries = entry(), source = 'https://www.arcamax.com/thefunnies/zi
   return `<rss version="2.0"><channel><link>${source}</link>${entries}</channel></rss>`;
 }
 function official(date = 'October 10, 2026', image = asset) {
-  return '<html><head><title>Fixture</title></head><body>' + [
+  // Actual successful GoComics pages carry the same security script as the
+  // challenge host. Keep it in the fixture so the full resolver sees it.
+  return '<html><head><title>Fixture</title><script src="https://www.gocomics.com/.bunny-shield/bd/bunnyprint.js"></script></head><body>' + [
     { '@type': 'ImageObject', contentUrl: 'https://gocomicscmsassets.gocomics.com/social.jpg' },
     { '@type': 'ImageObject', contentUrl: image, datePublished: date },
     { '@type': 'ImageObject', contentUrl: otherAsset, datePublished: 'October 9, 2026' },
@@ -44,7 +46,7 @@ test('publication version and stable source identity agree', () => {
   const entries = manifest.extensions.filter(item => item.id === source.id);
   assert.equal(entries.length, 1);
   assert.equal(source.id, 'gocomics');
-  assert.equal(source.version, '3.3.4');
+  assert.equal(source.version, '3.3.5');
   assert.equal(entries[0].version, source.version);
   assert.equal(entries[0].contentType, source.contentType);
   assert.deepEqual(entries[0].contentTypes, plain(source.contentTypes));
@@ -81,9 +83,20 @@ test('catalog failures do not permanently pin search to a small fallback list', 
 test('search pagination and discovery exhaustion do not endlessly repeat the same results', async () => {
   const source = load(async () => response(Array.from({ length: 65 }, (_, i) => card('fixture' + i, 'Fixture ' + i)).join('')));
   const [first, second, third] = await Promise.all([source.search('', 0), source.search('', 1), source.search('', 2)]);
-  assert.equal(first.length, 30); assert.equal(second.length, 30); assert.equal(third.length, 5);
-  assert.equal(new Set([...first, ...second, ...third].map(item => item.id)).size, 65);
+  assert.equal(first.length, 30); assert.equal(second.length, 30); assert.equal(third.length, 6);
+  assert.equal(new Set([...first, ...second, ...third].map(item => item.id)).size, 66, 'include the independently supported xkcd entry');
   assert.deepEqual(plain(await source.getDiscoverItems('popular', 1)), []);
+});
+
+test('xkcd stays searchable when omitted from ComicsRSS, without duplicates if listed', async () => {
+  for (const catalog of [card('garfield', 'Garfield'), card('garfield', 'Garfield') + card('xkcd', 'xkcd')]) {
+    const source = load(async () => response(catalog));
+    const matches = await source.search('xkcd', 0);
+    assert.equal(matches.length, 1);
+    assert.equal(matches[0].id, 'xkcd');
+    assert.equal(matches[0].title, 'xkcd');
+    assert.deepEqual(plain(await source.search('xkcd', 1)), []);
+  }
 });
 
 test('RSS strips match pubDate when the publisher uses opaque story URLs', async () => {
@@ -180,6 +193,34 @@ test('official extractor validates the primary strip date, never selects recomme
   assert.equal(source._extractImageUrl(official(), '2026/10/09'), null);
   assert.equal(source._extractImageUrl('<meta property="og:image" content="https://example.org/social.jpg">'), null);
   assert.equal(source._extractImageUrl('<script type="application/ld+json">null</script>'), null);
+});
+
+test('successful security-script-bearing pages resolve through ordinary fetch without opening the browser', async () => {
+  const requests = [];
+  let browserCalls = 0;
+  const source = load(async url => {
+    requests.push(url);
+    return response(url.endsWith('.rss') ? stoppedFeed() : official());
+  }, {
+    fetchBrowser: async () => { browserCalls++; throw Error('Unnecessary browser request'); },
+  });
+  assert.equal(source._isBlocked(official()), false);
+  assert.deepEqual(plain(await source.getPages('calvinandhobbes|2026/10/10')), [{ url: asset }]);
+  assert.equal(requests.length, 2);
+  assert.equal(browserCalls, 0);
+  assert.deepEqual(plain(await source.getPages('calvinandhobbes|2026/10/10')), [{ url: asset }]);
+  assert.equal(requests.length, 2, 'verified pages remain cached');
+});
+
+test('a background security script is not a challenge, but a script alone is not a comic', async () => {
+  const backgroundOnly = '<html><head><script src="/.bunny-shield/bd/bunnyprint.js"></script></head><body></body></html>';
+  const source = load(async url => response(url.endsWith('.rss') ? stoppedFeed() : backgroundOnly));
+  assert.equal(source._isBlocked(backgroundOnly), false);
+  for (const challenge of [blocked.data, '<div class="shield-challenge">Please wait</div>', '<body data-pow="fixture">Checking your browser</body>']) {
+    assert.equal(source._isBlocked(challenge), true);
+    assert.equal(source._extractOfficialStrip(challenge, '2026/10/10'), null);
+  }
+  await assert.rejects(source.getPages('calvinandhobbes|2026/10/10'), /did not provide a public strip/);
 });
 
 test('official calendar dates do not depend on engine-specific free-form date parsing', () => {

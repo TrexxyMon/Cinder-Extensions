@@ -4,7 +4,7 @@
 __cinderExport = {
   id: "gocomics",
   name: "GoComics",
-  version: "3.3.4",
+  version: "3.3.5",
   icon: "🗞️",
   description: "Read 600+ daily comic strips via ComicsRSS – GoComics, Comics Kingdom, Wumo, Life on Earth, and more.",
   contentType: "comics",
@@ -101,7 +101,9 @@ __cinderExport = {
   },
 
   _isBlocked: function(h) {
-    return !h || h.indexOf("bunny-shield") !== -1 || h.indexOf("shield-challenge") !== -1 ||
+    // GoComics includes /.bunny-shield/bd/bunnyprint.js on successful comic
+    // pages too. That script name is not evidence of an active challenge.
+    return !h || h.indexOf("shield-challenge") !== -1 ||
       h.indexOf("Establishing a secure connection") !== -1 || h.indexOf("data-pow=") !== -1;
   },
 
@@ -232,7 +234,15 @@ __cinderExport = {
     }).then(function(r) {
       if (r.status === 200 && r.data) {
         var comics = self._parseComicsRssIndex(r.data);
-        if (comics.length) return comics;
+        if (comics.length) {
+          // xkcd uses its own supported API and is no longer in ComicsRSS.
+          // A successful catalog refresh must not hide it from search.
+          if (!comics.some(function(comic) { return comic.id === "xkcd"; })) {
+            comics.push({ id: "xkcd", title: "xkcd", author: "Randall Munroe" });
+            comics.sort(function(a, b) { return a.title.localeCompare(b.title); });
+          }
+          return comics;
+        }
       }
       return self.COMICS_FALLBACK;
     }).catch(function() {
@@ -341,7 +351,9 @@ __cinderExport = {
     var task = self._headers().then(async function(headers) {
       var response = null, strip = null;
       try { response = await cinder.fetch(url, { headers: headers, timeout: 8000 }); } catch (_) {}
-      if (response && response.status === 200 && !self._isBlocked(response.data)) strip = self._extractOfficialStrip(response.data, datePath);
+      // A date-verified public strip is stronger evidence than incidental
+      // security-script strings in the surrounding HTML.
+      if (response && response.status === 200) strip = self._extractOfficialStrip(response.data, datePath);
       if (!strip && typeof cinder.fetchBrowser === "function") {
         // Use the device browser identity; don't impose an Android UA on iOS.
         var browserHeaders = {
@@ -351,7 +363,7 @@ __cinderExport = {
         };
         if (headers.Cookie) browserHeaders.Cookie = headers.Cookie;
         try { response = await cinder.fetchBrowser(url, { headers: browserHeaders, browserUserAgent: "desktop", timeout: 18000 }); } catch (_) { response = null; }
-        if (response && response.status === 200 && !self._isBlocked(response.data)) strip = self._extractOfficialStrip(response.data, datePath);
+        if (response && response.status === 200) strip = self._extractOfficialStrip(response.data, datePath);
       }
       if (!strip) {
         if (!response || response.status === 403 || response.status === 429 || self._isBlocked(response.data)) {
