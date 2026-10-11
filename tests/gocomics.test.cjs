@@ -44,7 +44,7 @@ test('publication version and stable source identity agree', () => {
   const entries = manifest.extensions.filter(item => item.id === source.id);
   assert.equal(entries.length, 1);
   assert.equal(source.id, 'gocomics');
-  assert.equal(source.version, '3.3.3');
+  assert.equal(source.version, '3.3.4');
   assert.equal(entries[0].version, source.version);
   assert.equal(entries[0].contentType, source.contentType);
   assert.deepEqual(entries[0].contentTypes, plain(source.contentTypes));
@@ -115,17 +115,63 @@ test('non-GoComics missing dates fail clearly, never request the same slug from 
   assert.deepEqual(calls, ['https://www.comicsrss.com/rss/zits.rss']);
 });
 
-test('discontinued GoComics RSS uses the actual latest public strip and retains legacy date IDs', async () => {
+test('GoComics chapter listing never opens a blocked official page or browser', async () => {
   const calls = [];
-  const source = load(async url => { calls.push(url); return response(url.endsWith('.rss') ? stoppedFeed() : official()); });
+  let browserCalls = 0;
+  const source = load(async url => { calls.push(url); return url.endsWith('.rss') ? response(stoppedFeed()) : blocked; }, {
+    fetchBrowser: async () => { browserCalls++; return blocked; },
+  });
   const chapters = await source.getChapters('calvinandhobbes');
   assert.equal(chapters.length, 730, 'retain existing date-based archive navigation');
-  assert.equal(chapters[0].id, 'calvinandhobbes|2026/10/10');
-  assert.equal(chapters[1].id, 'calvinandhobbes|2026/10/09');
-  assert.deepEqual(plain(await source.getPages(chapters[0].id)), [{ url: asset }]);
-  assert.equal(calls.length, 2, 'opening the latest strip reuses the verified image');
+  assert.equal(new Set(chapters.map(chapter => chapter.id)).size, 730);
+  assert.deepEqual(calls, ['https://www.comicsrss.com/rss/calvinandhobbes.rss']);
+  assert.equal(browserCalls, 0, 'browser access is not a prerequisite for showing chapters');
+  await assert.rejects(source.getPages('calvinandhobbes|2026/10/10'), error => {
+    assert.match(error.message, /site verification/);
+    assert.doesNotMatch(error.message, /network|internet|offline|connection/i, 'a blocked website does not establish that the device is offline');
+    return true;
+  });
+  assert.equal(browserCalls, 1, 'only opening a strip attempts browser access');
+  const callsAfterPageFailure = calls.length;
+  assert.equal((await source.getChapters('calvinandhobbes')).length, 730, 'page failures must not poison chapter listing');
+  assert.equal(calls.length, callsAfterPageFailure);
+  assert.equal(browserCalls, 1);
   assert.deepEqual(plain(await source.getPages('calvinandhobbes|2025/06/23')), [{ url: otherAsset }]);
-  assert.equal(calls.length, 2, 'old saved chapters still resolve from the feed');
+  assert.equal(calls.length, callsAfterPageFailure, 'old saved chapters still resolve from the feed');
+});
+
+test('GoComics calendar works on older hosts without the optional browser API', async () => {
+  const source = load(async url => {
+    assert.equal(url, 'https://www.comicsrss.com/rss/garfield.rss');
+    return response(feed('', 'https://www.gocomics.com/garfield'));
+  });
+  const chapters = await source.getChapters('garfield');
+  assert.equal(chapters.length, 730, 'a discontinued feed does not require embedded images to list the calendar');
+  assert.ok(chapters.every(chapter => /^garfield\|\d{4}\/\d{2}\/\d{2}$/.test(chapter.id)));
+});
+
+test('legacy calendar uses local today and keeps every date consecutive across DST and leap days', () => {
+  const fixed = new Date('2026-10-11T00:30:00Z').getTime();
+  class FixedDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [fixed])); }
+    static now() { return fixed; }
+    // Simulate a western-hemisphere device where UTC is already tomorrow.
+    getFullYear() { return 2026; }
+    getMonth() { return 9; }
+    getDate() { return 10; }
+  }
+  const context = vm.createContext({ cinder: {}, Date: FixedDate });
+  vm.runInContext(script, context);
+  const source = context.__cinderExport;
+  const chapters = source._calendarChapters('garfield');
+  assert.equal(chapters[0].id, 'garfield|2026/10/10');
+  assert.equal(chapters[1].id, 'garfield|2026/10/09');
+  assert.equal(chapters[0].chapterNumber, 730);
+  assert.equal(chapters[729].chapterNumber, 1);
+  for (let i = 1; i < chapters.length; i++) {
+    assert.equal(Date.parse(chapters[i - 1].dateUploaded) - Date.parse(chapters[i].dateUploaded), 86400000);
+  }
+  assert.equal(source._calendarChapters('garfield', '2024/03/01')[1].id, 'garfield|2024/02/29');
 });
 
 test('official extractor validates the primary strip date, never selects recommendations or social art', () => {
@@ -134,6 +180,26 @@ test('official extractor validates the primary strip date, never selects recomme
   assert.equal(source._extractImageUrl(official(), '2026/10/09'), null);
   assert.equal(source._extractImageUrl('<meta property="og:image" content="https://example.org/social.jpg">'), null);
   assert.equal(source._extractImageUrl('<script type="application/ld+json">null</script>'), null);
+});
+
+test('official calendar dates do not depend on engine-specific free-form date parsing', () => {
+  class StrictDate extends Date {
+    constructor(...args) {
+      if (typeof args[0] === 'string' && /[a-z]/i.test(args[0]) && !/^\d{4}-\d{2}-\d{2}T/.test(args[0])) {
+        throw Error('Free-form date parsing is not supported');
+      }
+      super(...args);
+    }
+  }
+  const context = vm.createContext({ cinder: {}, Date: StrictDate });
+  vm.runInContext(script, context);
+  const source = context.__cinderExport;
+  assert.equal(source._extractImageUrl(official(), '2026/10/10'), asset);
+  assert.equal(source._datePath('Oct 10, 2026'), '2026/10/10');
+  assert.equal(source._datePath(' February 29, 2024 '), '2024/02/29');
+  assert.equal(source._datePath('February 29, 2026'), '');
+  assert.equal(source._datePath('October 32, 2026'), '');
+  assert.equal(source._datePath('NotAMonth 10, 2026'), '');
 });
 
 test('HTTP challenge falls back once to the existing device browser API and preserves device UA', async () => {
@@ -155,7 +221,7 @@ test('HTTP challenge falls back once to the existing device browser API and pres
 
 test('older hosts without browser support report blocked access rather than false no-pages success', async () => {
   const source = load(async url => url.endsWith('.rss') ? response(stoppedFeed()) : blocked);
-  await assert.rejects(source.getPages('calvinandhobbes|2026/10/10'), /site verification or network failure/);
+  await assert.rejects(source.getPages('calvinandhobbes|2026/10/10'), /site verification or unavailable page/);
 });
 
 test('an offline feed never guesses an unverified GoComics publisher', async () => {

@@ -4,7 +4,7 @@
 __cinderExport = {
   id: "gocomics",
   name: "GoComics",
-  version: "3.3.3",
+  version: "3.3.4",
   icon: "🗞️",
   description: "Read 600+ daily comic strips via ComicsRSS – GoComics, Comics Kingdom, Wumo, Life on Earth, and more.",
   contentType: "comics",
@@ -133,7 +133,18 @@ __cinderExport = {
   },
 
   _datePath: function(value) {
-    var match = String(value || "").match(/\b(\d{4})[/-](\d{2})[/-](\d{2})\b/);
+    var text = String(value || "");
+    var match = text.match(/\b(\d{4})[/-](\d{2})[/-](\d{2})\b/);
+    // JSON-LD uses a calendar date such as "October 10, 2026", not an
+    // instant in the device's time zone. Parse it explicitly: free-form Date
+    // parsing differs between JS engines and shifts to yesterday east of UTC.
+    var named = !match && text.trim().match(/^([a-z]+)\s+(\d{1,2}),?\s+(\d{4})$/i);
+    if (named) {
+      var month = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+        .findIndex(function(name) { return name === named[1].toLowerCase() || name.slice(0, 3) === named[1].toLowerCase(); });
+      if (month === -1) return "";
+      match = [named[0], named[3], String(month + 1).padStart(2, "0"), named[2].padStart(2, "0")];
+    }
     var date = match ? new Date(Date.UTC(+match[1], +match[2] - 1, +match[3])) : new Date(value);
     if (!isFinite(date.getTime())) return "";
     var result = date.toISOString().slice(0, 10).replace(/-/g, "/");
@@ -344,7 +355,7 @@ __cinderExport = {
       }
       if (!strip) {
         if (!response || response.status === 403 || response.status === 429 || self._isBlocked(response.data)) {
-          throw new Error("GoComics could not load the comic page (site verification or network failure). Please try again later or check access on the source website.");
+          throw new Error("GoComics could not load the comic page (site verification or unavailable page). Please try again later or check access on the source website.");
         }
         throw new Error("GoComics did not provide a public strip for this date. It may be unavailable or require an account; a different strip will not be substituted.");
       }
@@ -457,12 +468,13 @@ __cinderExport = {
       });
     }
 
-    return self._loadFeed(slug).then(async function(feed) {
+    return self._loadFeed(slug).then(function(feed) {
       if (/^https?:\/\/(?:www\.)?gocomics\.com\//i.test(feed.sourceUrl)) {
-        // These RSS feeds stopped in June 2025. Anchor the existing two-year
-        // archive to the site's actual latest strip, not the device clock.
-        var latest = await self._loadOfficialStrip(slug, "");
-        return self._calendarChapters(slug, latest.datePath);
+        // These RSS feeds stopped in June 2025. Restore the legacy date
+        // calendar without fetching a strip first: site verification must
+        // not prevent opening the chapter list. getPages still verifies the
+        // selected date and never substitutes a different day's image.
+        return self._calendarChapters(slug);
       }
       if (!feed.entries.length) throw new Error("This comic's RSS feed has no available strips.");
       return feed.entries.map(function(entry, i) {
@@ -474,7 +486,11 @@ __cinderExport = {
 
   _calendarChapters: function(slug, latestDate) {
     var chapters = [];
-    var today = new Date(latestDate.replace(/\//g, "-") + "T12:00:00Z");
+    var now = new Date();
+    // Start at the device's local calendar day as in the original listing,
+    // then step in UTC so daylight-saving changes cannot skip/repeat dates.
+    var today = latestDate ? new Date(latestDate.replace(/\//g, "-") + "T12:00:00Z")
+      : new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 12));
     for (var i = 0; i < 730; i++) {
       var d = new Date(today);
       d.setUTCDate(today.getUTCDate() - i);

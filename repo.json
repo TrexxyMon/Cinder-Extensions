@@ -341,7 +341,7 @@
                        {
                            "id":  "gocomics",
                            "name":  "GoComics",
-                           "version":  "3.3.3",
+                           "version":  "3.3.4",
                            "description":  "Read 600+ daily comic strips via ComicsRSS - GoComics, Comics Kingdom, Wumo, Life on Earth, and more.",
                            "language":  "English",
                            "contentType":  "comics",
