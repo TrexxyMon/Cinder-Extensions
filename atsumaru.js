@@ -2,7 +2,7 @@ var Atsumaru = {};
 
 Atsumaru.id = "atsumaru";
 Atsumaru.name = "Atsumaru";
-Atsumaru.version = "0.1.1-cinder";
+Atsumaru.version = "0.1.2-cinder";
 Atsumaru.icon = "AT";
 Atsumaru.description = "Read manga, manhwa, manhua, and OEL from Atsumaru.";
 Atsumaru.contentType = "manga";
@@ -67,6 +67,15 @@ Atsumaru._normalizeImage = function(value) {
   if (/^https?:\/\//i.test(raw)) return raw.replace(/^http:\/\//i, "https://");
   raw = raw.replace(/^\/+/, "").replace(/^static\//i, "");
   return this.BASE_URL + "/static/" + raw;
+};
+
+Atsumaru._normalizePageImage = function(value) {
+  // The website origin still serves covers, but chapter images moved to the
+  // CDN. Keep external image hosts and signed query strings intact.
+  return this._normalizeImage(value).replace(
+    /^https:\/\/atsu\.moe(?=\/static\/)/i,
+    "https://cdn.atsu.moe"
+  );
 };
 
 Atsumaru._namesFromValue = function(value, typeFilter) {
@@ -251,9 +260,12 @@ Atsumaru.getDiscoverSections = async function() {
 };
 
 Atsumaru.getDiscoverItems = async function(sectionId, page) {
-  var pageNumber = Math.max(0, page || 0);
-  var path = sectionId === "latest" ? "recentlyUpdated" : "trending";
-  var url = this.BASE_URL + "/api/infinite/" + path + "?page=" + pageNumber + "&types=Manga,Manwha,Manhua,OEL";
+  // Cinder browse pages are one-based; keep 0/omitted as first-page aliases.
+  var pageNumber = Math.max(1, Math.floor(Number(page) || 1));
+  var limit = 40;
+  var path = sectionId === "latest" ? "recentlyUpdated" : "popular";
+  var url = this.BASE_URL + "/api/home2/" + path + "?offset=" + ((pageNumber - 1) * limit) + "&limit=" + limit + "&types=Manga,Manwha,Manhua,OEL&mediums=Comic";
+  if (path === "popular") url += "&timeframe=daily";
   var data = await this._apiGet(url);
   var rows = data.items || [];
   var results = [];
@@ -305,7 +317,7 @@ Atsumaru.getPages = async function(chapterId) {
   var pages = (((data || {}).readChapter || {}).pages) || [];
   return pages.map(function(page) {
     return {
-      url: Atsumaru._normalizeImage(page.image),
+      url: Atsumaru._normalizePageImage(page.image),
       headers: Atsumaru._imageHeaders(),
     };
   }).filter(function(page) {
