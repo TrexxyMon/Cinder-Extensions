@@ -407,11 +407,15 @@
                        {
                            "id":  "annas-archive-slow",
                            "name":  "Anna\u0027s Archive",
-                           "version":  "2.1.12",
+                           "version":  "2.1.13",
                            "description":  "Anna\u0027s Archive direct downloader powered entirely by your device, with no backend infrastructure.",
                            "language":  "English",
                            "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/annas_archive.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@f43a0364811cc78b8022e8171210048f639ae6dd/annas_archive.js",
+                           "browser":  {
+                                           "startUrl":  "https://annas-archive.gd/search?q=test",
+                                           "userAgent":  "mobile"
+                                       },
                            "minCinderVersion":  "1.0.0",
                            "contentTypes":  [
                                                 "ebook"
