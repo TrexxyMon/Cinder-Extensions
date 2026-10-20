@@ -53,11 +53,11 @@
                        {
                            "id":  "atsumaru",
                            "name":  "Atsumaru",
-                           "version":  "0.1.1-cinder",
+                           "version":  "0.1.2-cinder",
                            "description":  "Read manga, manhwa, manhua, and OEL from Atsumaru.",
                            "language":  "English",
                            "contentType":  "manga",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/atsumaru.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@d71403112fb6a2301dc11191e346fd6aa41d0eb8/atsumaru.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "manga"
