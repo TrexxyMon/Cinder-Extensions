@@ -143,12 +143,21 @@ for (const probe of [{ status: 403 }, { status: 405 }, { status: 0 }, Error('HEA
 }
 
 test('uses the selected official domain but never sends the key to a custom host', async () => {
-	const selected = harness({ domain: 'annas-archive.gs' });
-	assert.equal((await selected.resolve()).headers.Referer, 'https://annas-archive.gs/md5/' + md5);
-	assert.equal(new URL(selected.requests[0].url).hostname, 'annas-archive.gs');
+	const selected = harness({ domain: 'annas-archive.pk' });
+	assert.equal((await selected.resolve()).headers.Referer, 'https://annas-archive.pk/md5/' + md5);
+	assert.equal(new URL(selected.requests[0].url).hostname, 'annas-archive.pk');
 	const custom = harness({ domain: 'other.example.test' });
 	assert.equal((await custom.resolve()).url, fallback);
 	assert.equal(custom.requests.length, 0);
+});
+
+test('retired mirror preferences never send a supporter key to the retired host', async () => {
+	for (const domain of ['annas-archive.se', 'annas-archive.li', 'annas-archive.gs']) {
+		const h = harness({ domain });
+		assert.equal((await h.resolve()).url, direct);
+		assert.equal(new URL(h.requests[0].url).hostname, 'annas-archive.gd');
+		assert.equal(h.logs.join(' ').includes(key), false);
+	}
 });
 
 test('member links are refreshed each resolve rather than cached', async () => {

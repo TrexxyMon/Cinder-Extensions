@@ -6,12 +6,13 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.12",
+	version: "2.1.13",
 	icon: "📚",
 	description: "Anna's Archive direct downloader powered entirely by your device, with no backend infrastructure.",
 	contentType: "books",
 	contentTypes: ["ebook"],
 	excludeFromDefaultMetadataProviders: true,
+	browser: { startUrl: "https://annas-archive.gd/search?q=test", userAgent: "mobile" },
 
 	capabilities: {
 		search: true,
@@ -25,12 +26,19 @@ __cinderExport = {
 	getSettings: function() {
 		return [
 			{
+				id: "verify_website",
+				label: "Verify Website",
+				type: "webview",
+				url: "https://annas-archive.gd/search?q=test",
+				subtitle: "Complete the browser check, then return and retry search.",
+			},
+			{
 				id: "aa_supporter_key",
 				label: "AA Supporter Key (Optional)",
 				type: "password",
 				defaultValue: "",
 				placeholder: "Paste your supporter secret key",
-				description: "From annas-archive.se/account. Used on-device for Anna's Archive direct download pages. Stored in device Keychain.",
+				description: "From annas-archive.gd/account. Used on-device for Anna's Archive direct download pages. Stored in device Keychain.",
 			},
 			{
 				id: "preferred_format",
@@ -50,9 +58,8 @@ __cinderExport = {
 				defaultValue: "annas-archive.gd",
 				options: [
 					{ label: "annas-archive.gd", value: "annas-archive.gd" },
-					{ label: "annas-archive.gs", value: "annas-archive.gs" },
-					{ label: "annas-archive.se", value: "annas-archive.se" },
-					{ label: "annas-archive.li", value: "annas-archive.li" },
+					{ label: "annas-archive.gl", value: "annas-archive.gl" },
+					{ label: "annas-archive.pk", value: "annas-archive.pk" },
 				],
 			},
 			{
@@ -80,11 +87,19 @@ __cinderExport = {
 
 	// ── Internals ──
 
+	getSettingsAsync: async function() {
+		var settings = this.getSettings();
+		var base = await this._getBaseUrl();
+		if (this._BASE_DOMAINS.indexOf(base.replace(/^https:\/\//, "")) !== -1) {
+			settings[0].url = base + "/search?q=test";
+		}
+		return settings;
+	},
+
 	_BASE_DOMAINS: [
 		"annas-archive.gd",
-		"annas-archive.gs",
-		"annas-archive.se",
-		"annas-archive.li",
+		"annas-archive.gl",
+		"annas-archive.pk",
 	],
 
 	_SUPPORTED_FORMATS: ["epub", "pdf"],
@@ -102,8 +117,153 @@ __cinderExport = {
 
 	_getBaseUrl: async function() {
 		var pref = await cinder.store.get("preferred_domain");
+		if (["annas-archive.gs", "annas-archive.se", "annas-archive.li"].indexOf(pref) !== -1) pref = null;
 		if (pref) return "https://" + pref;
 		return "https://" + this._BASE_DOMAINS[0];
+	},
+
+	// Search has a 15s budget in older hosts. Do not let a 30s native request
+	// followed by several 60s browser tasks outlive that caller.
+	_SEARCH_BUDGET_MS: 13000,
+	_searchRetryUntil: {},
+	_searchBrowserTask: null,
+
+	_searchError: function(message, status) {
+		var error = new Error(message);
+		error.status = status || 0;
+		error.stopSearch = true;
+		return error;
+	},
+
+	_verificationError: function() {
+		return this._searchError("Anna's Archive requires a browser check. Open extension settings > Verify Website, complete the check, then retry search.", 403);
+	},
+
+	_isSearchChallenge: function(html) {
+		var text = String(html || "");
+		// Real pages also load check.ddos-guard.net/check.js. Do not classify
+		// all pages mentioning a protection vendor as challenges.
+		return /<title[^>]*>\s*(?:DDoS-Guard|Just a moment[^<]*|Attention Required[^<]*)<\/title>/i.test(text) ||
+			/\/\.well-known\/ddos-guard\/(?:js-challenge|captcha)\//i.test(text) ||
+			/\/cdn-cgi\/challenge-platform\/|id=["']cf-challenge/i.test(text);
+	},
+
+	_isSearchPage: function(html) {
+		var text = String(html || "");
+		if (this._isSearchChallenge(text)) return false;
+		// Accept valid zero-result pages, but not parked domains or generic errors.
+		return /<a\b[^>]*href=["']\/md5\/[a-f0-9]{32}/i.test(text) ||
+			(/<title[^>]*>[^<]*Anna[^<]*Archive/i.test(text) &&
+				/<form\b[^>]*action=["'](?:https:\/\/annas-archive\.[a-z]+)?\/search(?:[?"'])/i.test(text));
+	},
+
+	_assertSearchActive: function(context) {
+		if (context.signal && context.signal.aborted) throw this._searchError("Search cancelled.");
+		if (context.expired || Date.now() >= context.deadline) {
+			throw this._searchError("Anna's Archive search timed out. If the website is checking your browser, use extension settings > Verify Website and retry.");
+		}
+	},
+
+	_fetchSearchPage: function(path, signal) {
+		var self = this;
+		var context = { signal: signal, deadline: Date.now() + this._SEARCH_BUDGET_MS, expired: false };
+		var work = async function() {
+			var pref = await cinder.store.get("preferred_domain");
+			var domains = self._BASE_DOMAINS.slice();
+			if (domains.indexOf(pref) !== -1) {
+				domains = domains.filter(function(domain) { return domain !== pref; });
+				domains.unshift(pref);
+			}
+			for (var i = 0; i < domains.length; i++) {
+				self._assertSearchActive(context);
+				var domain = domains[i];
+				if (self._searchRetryUntil[domain] > Date.now()) {
+					throw self._searchError("Anna's Archive is limiting requests. Please wait before retrying.", 429);
+				}
+				if (self._searchBrowserTask) throw self._verificationError();
+				var url = "https://" + domain + path;
+				var response;
+				try {
+					response = await cinder.fetch(url, {
+						timeout: Math.min(3500, Math.max(1, context.deadline - Date.now())),
+						signal: signal,
+						headers: {
+							// Match Cinder's visible and background mobile browser session.
+							"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+							"Accept": "text/html,application/xhtml+xml",
+						},
+					});
+				} catch (_) {
+					response = { status: 0, data: "" };
+				}
+				self._assertSearchActive(context);
+				var status = Number(response && response.status) || 0;
+				var body = response && response.data;
+				var headers = response && response.headers || {};
+				var retryAfter = null;
+				Object.keys(headers).some(function(key) {
+					if (key.toLowerCase() !== "retry-after") return false;
+					retryAfter = String(headers[key]).trim();
+					return true;
+				});
+				if (status === 429 || (status >= 500 && retryAfter)) {
+					var now = Date.now();
+					var until = /^\d+$/.test(retryAfter || "") ? now + Number(retryAfter) * 1000 : Date.parse(retryAfter);
+					self._searchRetryUntil[domain] = until > now ? until : now + 60000;
+					throw self._searchError("Anna's Archive is limiting requests or temporarily busy. Please wait before retrying.", status);
+				}
+				if (status === 200 && self._isSearchPage(body)) return response;
+				if (status === 401) throw self._searchError("Anna's Archive denied this request. Open extension settings > Verify Website and retry.", 401);
+				if (status === 403 || self._isSearchChallenge(body)) {
+					self._assertSearchActive(context);
+					// Another concurrent query may have started verification while
+					// this query's native request was still running.
+					if (self._searchBrowserTask || typeof cinder.fetchBrowser !== "function") throw self._verificationError();
+					// One normal browser attempt, not one per mirror/query variant.
+					// Explicit verification has no search deadline and saves cookies
+					// through the host's existing, extension-scoped browser session.
+					var task = Promise.resolve().then(function() {
+						self._assertSearchActive(context);
+						return cinder.fetchBrowser(url, { headers: {
+							"X-Cinder-Suppress-Interactive": "1",
+							"X-Cinder-Min-Wait-Ms": "500",
+							"X-Cinder-Max-Wait-Ms": "6000",
+							"X-Cinder-Wait-For-Selector": 'form[action*="/search"], a[href^="/md5/"]',
+						} });
+					});
+					self._searchBrowserTask = task;
+					try {
+						var browserResponse = await task;
+						self._assertSearchActive(context);
+						if (browserResponse && Number(browserResponse.status) === 200 &&
+							self._isSearchPage(browserResponse.data)) return browserResponse;
+					} catch (_) {
+						self._assertSearchActive(context);
+					} finally {
+						if (self._searchBrowserTask === task) self._searchBrowserTask = null;
+					}
+					throw self._verificationError();
+				}
+				// Only transport failures or unrecognized/retired hosts try the
+				// next advertised mirror. Never race challenge requests.
+			}
+			throw self._searchError("Anna's Archive search is temporarily unavailable or returned an unrecognized page. Please retry later.");
+		};
+		return new Promise(function(resolve, reject) {
+			var settled = false;
+			// Older extension sandboxes expose setTimeout, but not clearTimeout.
+			setTimeout(function() {
+				if (settled) return;
+				settled = true;
+				context.expired = true;
+				reject(self._searchError("Anna's Archive search timed out. Open extension settings > Verify Website if a browser check is required."));
+			}, self._SEARCH_BUDGET_MS);
+			work().then(function(result) {
+				if (!settled) { settled = true; resolve(result); }
+			}, function(error) {
+				if (!settled) { settled = true; reject(error); }
+			});
+		});
 	},
 
 	_smartFetch: async function(url) {
@@ -137,7 +297,7 @@ __cinderExport = {
 		var pref = await cinder.store.get("preferred_domain");
 		var domains = this._BASE_DOMAINS.slice();
 
-		if (pref) {
+		if (domains.indexOf(pref) !== -1) {
 			domains = domains.filter(function(d) { return d !== pref; });
 			domains.unshift(pref);
 		}
@@ -258,7 +418,7 @@ __cinderExport = {
 
 	// ── Search ──
 
-	search: async function(query, page) {
+	search: async function(query, page, _selection, requestOptions) {
 		if (!page) page = 0;
 
 		var format = await cinder.store.get("preferred_format");
@@ -266,7 +426,7 @@ __cinderExport = {
 		var searchPath = "/search?q=" + encodeURIComponent(query) + extParam
 			+ "&page=" + (page + 1) + "&sort=&lang=en";
 
-		var resp = await this._fetchWithFallback(searchPath);
+		var resp = await this._fetchSearchPage(searchPath, requestOptions && requestOptions.signal);
 		var parsedResults = this._parseSearchResultsFromHtml(resp.data);
 		if (parsedResults.length > 0) {
 			cinder.log("[AA] Parsed " + parsedResults.length + " results from result cards (epub/pdf only)");
