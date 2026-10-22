@@ -373,11 +373,11 @@
                        {
                            "id":  "batcave",
                            "name":  "BatCave",
-                           "version":  "0.2.1-cinder",
+                           "version":  "0.2.2-cinder",
                            "description":  "Read western comics from BatCave. No debrid required.",
                            "language":  "English",
                            "contentType":  "comics",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/batcave.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@7ef6b80326664201acbe4e03444a333af4356f9d/batcave.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "comic"
