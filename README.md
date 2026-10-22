@@ -22,7 +22,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **MangaK** | Manga | Read manga, manhwa, and manhua from MangaK. No debrid required. |
 | **MangaKakalot** | Manga | Read manga, manhwa, and manhua from MangaKakalot. No debrid required. |
 | **OPDS Catalog** | Books | Connect to your OPDS-compatible server, including Komga, Kavita, Calibre-web, and COPS. |
-| **Anna's Archive** | Books | Direct downloader powered entirely by your device; no backend infrastructure. |
+| **Anna's Archive** | Books | On-device search and direct downloads, with optional TorBox resolution without a supporter key. |
 | **Z-Library** | Books | Search, discover, and download ebooks through your Z-Library account. Created by Stick. |
 | **Bookracy** | Books | Search and download ebooks, comics, and manga from Bookracy's open library API. |
 | **LibGen** | Books | Direct download-source extension with on-device link resolution. |
@@ -50,6 +50,26 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **BatCave** | Comics | Search and discover western comics, browse issue lists, and stream chapter pages. No debrid required. |
 | **Sway Translations** | Web & Light Novels | Search WordPress novel pages for EPUB/PDF downloads. |
 | **BBato** | Manga | Read manga, manhwa, and manhua from BBato. |
+
+### Anna's Archive download method
+
+Direct download remains the default. Set **Download Method → TorBox (no supporter
+key needed)** in the extension's settings to let the TorBox account connected in
+Cinder resolve the book's Anna's Archive page. A personal AA supporter key is not
+required or read in TorBox mode. The optional supporter key still works separately
+for fast **Direct** downloads. No TorBox key is entered in the extension.
+
+Search and browser verification still happen on your device. TorBox mode requires
+a connected TorBox account with WebDL access and depends on TorBox's host support.
+It does not silently switch providers or download the book's HTML page as a file.
+If unavailable, switch back to **Direct**. Existing app routing fields are reused;
+ordinary Direct downloads and users who leave the setting off are unchanged.
+
+TorBox [announced its own Anna's Archive downloader](https://feedback.torbox.app/changelog/v70)
+and [added .gl support](https://feedback.torbox.app/changelog/v84). As of October 22,
+2026, its [live host list](https://api.torbox.app/v1/api/webdl/hosters) marks Anna's
+Archive disabled due to CAPTCHA. This extension option cannot fix that upstream
+outage or guarantee successful downloads while the host is disabled.
 
 ## How To Install
 

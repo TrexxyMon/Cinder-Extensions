@@ -1,14 +1,14 @@
 // Anna's Archive Direct Download Extension
 //
-// Device-only direct downloader for Anna's Archive.
-// Uses Anna's Archive download pages from the device; no backend infrastructure.
+// Direct downloads by default, with opt-in TorBox account resolution.
+// Search and direct resolution run on-device; no Cinder backend infrastructure.
 
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.13",
+	version: "2.1.14",
 	icon: "📚",
-	description: "Anna's Archive direct downloader powered entirely by your device, with no backend infrastructure.",
+	description: "Anna's Archive downloads with on-device search, direct downloads, and optional TorBox resolution.",
 	contentType: "books",
 	contentTypes: ["ebook"],
 	excludeFromDefaultMetadataProviders: true,
@@ -39,6 +39,17 @@ __cinderExport = {
 				defaultValue: "",
 				placeholder: "Paste your supporter secret key",
 				description: "From annas-archive.gd/account. Used on-device for Anna's Archive direct download pages. Stored in device Keychain.",
+			},
+			{
+				id: "download_method",
+				label: "Download Method",
+				type: "select",
+				defaultValue: "direct",
+				options: [
+					{ label: "Direct (default)", value: "direct" },
+					{ label: "TorBox (no supporter key needed)", value: "torbox" },
+				],
+				description: "TorBox uses your account connected in Cinder; no AA supporter key needed. Availability depends on TorBox. Switch to Direct if unavailable. Search still uses your device.",
 			},
 			{
 				id: "preferred_format",
@@ -515,7 +526,12 @@ __cinderExport = {
 		var md5 = item.url || item.id;
 		cinder.log("[AA] Resolving md5: " + md5);
 
-		var debridLink = "https://annas-archive.gl/md5/" + md5;
+		// TorBox resolves the book page itself. Do not require or even read an AA
+		// supporter key, scrape slow mirrors, or send a landing page as a file URL.
+		var downloadMethod;
+		try { downloadMethod = await cinder.store.get("download_method"); }
+		catch (preferenceError) { cinder.warn("[AA] Download preference unavailable; using direct download"); }
+		if (downloadMethod === "torbox") return this._resolveTorBoxDownload(md5);
 
 		// ── Strategy 1: AA Supporter Key (fast_download) ──
 		try {
@@ -682,6 +698,10 @@ __cinderExport = {
 				var decodedUrl = decodeURIComponent(downloadUrl).toLowerCase();
 				var extMatch = decodedUrl.match(/\.(epub|pdf|fb2|mobi|azw3?|djvu|cbz|cbr|txt)(?:\?|$)/);
 				if (extMatch && this._SUPPORTED_FORMATS.indexOf(extMatch[1]) === -1) continue;
+				if (!(await this._validateDirectDownloadUrl(downloadUrl, slowUrl))) {
+					cinder.log("[AA] Resolved file endpoint failed validation; trying the next mirror");
+					continue;
+				}
 
 				cinder.log("[AA] ✅ Resolved: " + downloadUrl);
 				return {
@@ -758,6 +778,20 @@ __cinderExport = {
 		}
 
 		return null;
+	},
+
+	/** Existing debrid-only contract; TorBox credentials remain in Cinder. */
+	_resolveTorBoxDownload: function(md5) {
+		if (typeof md5 !== "string" || !/^[a-f0-9]{32}$/i.test(md5)) {
+			throw new Error("Invalid book identifier. Search for this book again.");
+		}
+		// TorBox documents .gl support. Do not forward arbitrary saved URLs,
+		// query strings, browser cookies, or an authenticated supporter API URL.
+		return {
+			url: "",
+			debridLink: "https://annas-archive.gl/md5/" + md5.toLowerCase(),
+			debridProvider: "torbox"
+		};
 	},
 
 	/** Member API contract: /dyn/api/fast_download.json (self-documenting JSON). */
@@ -890,6 +924,10 @@ __cinderExport = {
 						var decoded = decodeURIComponent(downloadUrl).toLowerCase();
 						var extMatch = decoded.match(/\.(epub|pdf|fb2|mobi|azw3?|djvu|cbz|cbr|txt)(?:\?|$)/);
 						if (extMatch && self._SUPPORTED_FORMATS.indexOf(extMatch[1]) === -1) return null;
+						if (!(await self._validateDirectDownloadUrl(downloadUrl, slowUrl))) {
+							cinder.log("[AA] Mirror " + (index + 1) + " returned a dead file endpoint");
+							return null;
+						}
 
 						cinder.log("[AA] 🏆 Mirror " + (index + 1) + " won!");
 						return { url: downloadUrl, referer: slowUrl };
