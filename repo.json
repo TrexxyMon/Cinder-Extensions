@@ -407,11 +407,11 @@
                        {
                            "id":  "annas-archive-slow",
                            "name":  "Anna\u0027s Archive",
-                           "version":  "2.1.13",
-                           "description":  "Anna\u0027s Archive direct downloader powered entirely by your device, with no backend infrastructure.",
+                           "version":  "2.1.14",
+                           "description":  "Anna\u0027s Archive downloads with on-device search, direct downloads, and optional TorBox resolution.",
                            "language":  "English",
                            "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@f43a0364811cc78b8022e8171210048f639ae6dd/annas_archive.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@092a9fcec0abdb0eabaca0de7da73c2a4a77e3f7/annas_archive.js",
                            "browser":  {
                                            "startUrl":  "https://annas-archive.gd/search?q=test",
                                            "userAgent":  "mobile"
