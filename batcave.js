@@ -2,7 +2,7 @@ var BatCave = {};
 
 BatCave.id = "batcave";
 BatCave.name = "BatCave";
-BatCave.version = "0.2.1-cinder";
+BatCave.version = "0.2.2-cinder";
 BatCave.icon = "BC";
 BatCave.description = "Read western comics from BatCave. No debrid required.";
 BatCave.contentType = "comics";
@@ -209,19 +209,41 @@ BatCave._fetchCachedHtml = async function(url, options) {
 
 BatCave._extractData = function(html) {
   var raw = String(html || "");
-  var markerIndex = raw.indexOf("window.__DATA__");
-  if (markerIndex < 0) return null;
-  var scriptEnd = raw.indexOf("</script>", markerIndex);
-  var script = scriptEnd >= 0 ? raw.slice(markerIndex, scriptEnd) : raw.slice(markerIndex);
-  var equalsIndex = script.indexOf("=");
-  if (equalsIndex < 0) return null;
-  var jsonText = script.slice(equalsIndex + 1).trim();
-  if (jsonText.endsWith(";")) jsonText = jsonText.slice(0, -1).trim();
-  try {
-    return JSON.parse(jsonText);
-  } catch (e) {
-    throw new Error("BatCave returned invalid embedded data.");
+  var assignment = /\bwindow\.__DATA__\s*=\s*/.exec(raw);
+  if (!assignment) return null;
+  var start = assignment.index + assignment[0].length;
+  var scriptEnd = raw.toLowerCase().indexOf("</script", start);
+  var end = scriptEnd >= 0 ? scriptEnd : raw.length;
+  // Reader scripts now append other statements after the data assignment.
+  // Read only the complete JSON object, respecting braces inside strings.
+  // Never execute website JavaScript in the extension sandbox.
+  var depth = 0;
+  var inString = false;
+  var escaped = false;
+  if (raw.charAt(start) === "{") {
+    for (var i = start; i < end; i++) {
+      var ch = raw.charAt(i);
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === '"') inString = false;
+      } else if (ch === '"') {
+        inString = true;
+      } else if (ch === "{") {
+        depth++;
+      } else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          try {
+            return JSON.parse(raw.slice(start, i + 1));
+          } catch (e) {
+            break;
+          }
+        }
+      }
+    }
   }
+  throw new Error("BatCave returned invalid embedded data.");
 };
 
 BatCave._isSeriesId = function(value) {
@@ -482,8 +504,14 @@ BatCave.getPages = async function(chapterId) {
   if (!data || !Array.isArray(data.images)) {
     throw new Error("BatCave page data script not found.");
   }
+  // Match the website's declared page count; it may append extra images and
+  // truncate them in the inline script after window.__DATA__ is assigned.
+  var images = data.images;
+  if (typeof data.pages === "number" && Number.isInteger(data.pages) && data.pages >= 0 && data.pages < images.length) {
+    images = images.slice(0, data.pages);
+  }
   var seen = {};
-  var pages = data.images.map(function(image) {
+  var pages = images.map(function(image) {
     var raw = typeof image === "string" ? image : (image && (image.url || image.src || image.link));
     var src = BatCave._absUrl(String(raw || "").trim());
     if (!src || seen[src]) return null;
