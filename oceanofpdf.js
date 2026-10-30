@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "oceanofpdf",
 	name: "OceanofPDF",
-	version: "0.1.7",
+	version: "0.1.8",
 	icon: "OPDF",
 	description: "OceanofPDF download-source extension with separate EPUB/PDF results, OceanofPDF-first search, optional ReadRobe fallback, and POST form downloads.",
 	contentType: "books",
@@ -50,7 +50,7 @@ __cinderExport = {
 
 	_pageError: function(resp) {
 		if (Number(resp && resp.status) === 403 || this._isChallenge(resp && resp.data)) {
-			return this._error("OceanofPDF requires a browser check. Open extension settings > Verify Website, complete the check, then retry.", 403);
+			return this._error("OceanofPDF could not complete the automatic browser check. Open extension settings > Verify Website, complete the check, then retry.", 403);
 		}
 		return this._error("OceanofPDF search is temporarily unavailable. Please retry later.", Number(resp && resp.status));
 	},
@@ -121,6 +121,7 @@ __cinderExport = {
 			headers: {
 				"X-Cinder-Suppress-Interactive": "1",
 				"X-Cinder-Min-Wait-Ms": "500",
+				"X-Cinder-Visible-Layout": "1",
 				"X-Cinder-Wait-For-Selector": context
 					? "article.entry, article.post-item, .no-results, .search-no-results"
 					: 'form[action*="Fetching_Resource.php"] input[name="filename"], form[action*="fetching-ebook-php"] input[name="filename"]',
@@ -194,7 +195,19 @@ __cinderExport = {
 				var extMatch = fileName.toLowerCase().match(/\.([a-z0-9]{2,5})(?:\s|$)/);
 				if (extMatch) format = extMatch[1];
 
+				var fields = {};
+				var inputs = form.querySelectorAll("input[name]");
+				for (var n = 0; n < inputs.length; n++) {
+					var name = inputs[n].attr("name") || "";
+					var type = String(inputs[n].attr("type") || "text").toLowerCase();
+					if (!name || name === "__proto__" || name === "constructor" || name === "prototype" ||
+						type === "image" || type === "submit" || type === "button") continue;
+					fields[name] = inputs[n].attr("value") || "";
+				}
+				fields.id = requestId;
+				fields.filename = fileName;
 				results.push({
+					fields: fields,
 					endpoint: endpoint,
 					requestId: requestId,
 					fileName: fileName,
@@ -409,6 +422,115 @@ __cinderExport = {
 		return { url: url, fileName: selected.fileName, headers: headers };
 	},
 
+
+	_formBody: function(selected) {
+		var fields = selected.fields || { id: selected.requestId, filename: selected.fileName };
+		return Object.keys(fields).filter(function(key) {
+			return key !== "__proto__" && key !== "constructor" && key !== "prototype";
+		}).map(function(key) { return encodeURIComponent(key) + "=" + encodeURIComponent(fields[key]); }).join("&");
+	},
+
+	_fileRedirect: function(response, selected) {
+		if (!response || !(Number(response.status) >= 200 && Number(response.status) < 400) || this._isChallenge(response.data)) return null;
+		var self = this;
+		var validate = function(raw, delay) {
+			var value = String(raw || "");
+			if (/[\x00-\x1f\x7f\\]/.test(value)) return null;
+			value = value.trim().replace(/&amp;/gi, "&");
+			if ((value.charAt(0) === "'" && value.slice(-1) === "'") ||
+				(value.charAt(0) === '"' && value.slice(-1) === '"')) value = value.slice(1, -1).trim();
+			if (!value || /[\r\n\\]/.test(value)) return null;
+			var url;
+			try {
+				url = typeof cinder.resolveUrl === "function" ? cinder.resolveUrl(value, selected.endpoint) : self._absUrl(value, self._baseForUrl(selected.endpoint));
+			} catch (_) { return null; }
+			// Signed file hosts differ from the website. Accept only an explicit
+			// HTTPS link for the requested filename; never carry website cookies
+			// or authorization over to that separate origin.
+			if (!/^https:\/\/[^\s/@?#]+(?:\/|$)/i.test(url)) return null;
+			var path = url.replace(/^https:\/\/[^/]+/i, "").split(/[?#]/)[0];
+			var name = path.slice(path.lastIndexOf("/") + 1);
+			try {
+				name = decodeURIComponent(name);
+			} catch (_) { return null; }
+			if (name !== selected.fileName) return null;
+			return { url: url, delay: Math.min(10, Math.max(0, Number(delay) || 0)) };
+		};
+		var parseRefresh = function(value) {
+			var match = String(value || "").match(/^\s*(\d+(?:\.\d+)?)?\s*;?\s*url\s*=\s*(.+?)\s*$/i);
+			return match ? validate(match[2], match[1]) : null;
+		};
+		var result = parseRefresh(this._responseHeader(response.headers, "refresh"));
+		if (result) return result;
+		var doc = cinder.parseHTML(String(response.data || ""));
+		var metas = doc.querySelectorAll("meta[http-equiv]");
+		for (var i = 0; i < metas.length; i++) {
+			if (String(metas[i].attr("http-equiv") || "").toLowerCase() !== "refresh") continue;
+			result = parseRefresh(metas[i].attr("content"));
+			if (result) return result;
+		}
+		var links = doc.querySelectorAll("a[href]");
+		for (var j = 0; j < links.length; j++) {
+			result = validate(links[j].attr("href"), 0);
+			if (result) return result;
+		}
+		return null;
+	},
+
+	_resolveOceanForm: async function(selected, pageUrl) {
+		if (this._baseForUrl(selected.endpoint) !== this._baseForUrl(pageUrl) ||
+			!/^https:\/\/oceanofpdf\.com\/Fetching_Resource\.php(?:[?#]|$)/i.test(selected.endpoint)) {
+			throw this._error("OceanofPDF returned an unexpected download form.");
+		}
+		var headers = {
+			"Content-Type": "application/x-www-form-urlencoded",
+			"Accept": "text/html,application/xhtml+xml",
+			"Referer": pageUrl,
+			"Origin": this._baseForUrl(pageUrl),
+			"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+		};
+		// cinder.fetch supplies this extension's stored website cookies. Read
+		// the small response here instead of handing an HTML form endpoint to
+		// a binary WebView and waiting for it to guess the final file URL.
+		for (var attempt = 0; attempt < 2; attempt++) {
+			var response = await cinder.fetch(selected.endpoint, {
+				method: "POST", headers: headers, body: this._formBody(selected), timeout: 15000,
+			});
+			var redirect = this._fileRedirect(response, selected);
+			if (redirect) {
+				if (redirect.delay) await new Promise(function(resolve) { setTimeout(resolve, redirect.delay * 1000); });
+				return { url: redirect.url, fileName: selected.fileName, headers: { Referer: selected.endpoint } };
+			}
+			var challenged = response && (response.status === 403 || this._isChallenge(response.data));
+			if (!challenged) {
+				cinder.warn("[OceanofPDF] Download link response", {
+					status: Number(response && response.status) || 0,
+					bytes: String(response && response.data || "").length,
+					type: this._responseHeader(response && response.headers, "content-type"),
+				});
+				throw this._error("OceanofPDF did not return a valid link for the selected file. Please retry later.", Number(response && response.status));
+			}
+			if (attempt || typeof cinder.fetchBrowser !== "function") throw this._pageError(response);
+			// One silent, source-scoped refresh, then repeat the same form POST.
+			// A verification GET must not replace or discard the POST body.
+			var refreshed = await cinder.fetchBrowser(pageUrl, { headers: {
+				"X-Cinder-Suppress-Interactive": "1", "X-Cinder-Visible-Layout": "1",
+				"X-Cinder-Min-Wait-Ms": "500", "X-Cinder-Max-Wait-Ms": "15000",
+				"X-Cinder-Wait-For-Selector": 'form[action*="Fetching_Resource.php"] input[name="filename"]',
+			} });
+			if (!this._isUsableHtml(refreshed)) throw this._pageError(response);
+			var forms = this._extractDownloadForms(refreshed.data, pageUrl);
+			var updated = null;
+			for (var f = 0; f < forms.length; f++) {
+				if (forms[f].endpoint === selected.endpoint && forms[f].fileName === selected.fileName &&
+					forms[f].format === selected.format) { updated = forms[f]; break; }
+			}
+			if (!updated) throw this._error("OceanofPDF no longer offers the selected file. Please search again.");
+			selected = updated;
+		}
+		throw this._error("OceanofPDF could not prepare the download.");
+	},
+
 	resolve: async function(item) {
 		var preferredFormat =
 			String(item.format || item.extra?.preferredFormat || "epub").toLowerCase();
@@ -428,24 +550,6 @@ __cinderExport = {
 			return await this._resolveMirrorForm(selected, item.url);
 		}
 
-		return {
-			url: selected.endpoint,
-			fileName: selected.fileName,
-			headers: item.url
-				? {
-					Referer: item.url,
-					"X-Cinder-Expect-Interstitial": "1",
-				}
-				: undefined,
-			downloadRequest: {
-				method: "POST",
-				bodyEncoding: "form",
-				body: {
-					id: selected.requestId,
-					filename: selected.fileName,
-				},
-				useBrowser: true,
-			},
-		};
+		return await this._resolveOceanForm(selected, item.url);
 	},
 };

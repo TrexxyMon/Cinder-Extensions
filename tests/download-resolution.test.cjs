@@ -156,16 +156,19 @@ test("OceanOfPDF does not cache or reuse session-bound download tokens", async (
 	assert.notEqual(first.url, second.url);
 });
 
-test("OceanOfPDF preserves original-site POST downloads and saved item metadata", async () => {
-	const source = loadSource("oceanofpdf", async () => { throw Error("No mirror POST expected"); });
+test("OceanOfPDF preserves saved item metadata while resolving the original-site POST before download", async () => {
+	const direct = "https://files.example/OceanofPDF.com/" + filename + "?md5=test&expires=1";
+	const source = loadSource("oceanofpdf", async (url, options) => {
+		assert.equal(url, "https://oceanofpdf.com/Fetching_Resource.php");
+		assert.equal(options.method, "POST");
+		return { status: 200, headers: { Refresh: "0; url='" + direct + "'" }, data: "" };
+	});
 	const original = { ...form, endpoint: "https://oceanofpdf.com/Fetching_Resource.php" };
 	source._fetchPage = async () => ({ status: 200, data: "x".repeat(1100) });
 	source._extractDownloadForms = () => [original];
 	const item = Object.freeze({ id: "saved#epub", title: "Title", cover: "cover.jpg", url: "https://oceanofpdf.com/book/", format: "epub" });
 	assert.deepEqual(plain(await source.resolve(item)), {
-		url: original.endpoint, fileName: filename,
-		headers: { Referer: item.url, "X-Cinder-Expect-Interstitial": "1" },
-		downloadRequest: { method: "POST", bodyEncoding: "form", body: { id: "srv3", filename }, useBrowser: true },
+		url: direct, fileName: filename, headers: { Referer: original.endpoint },
 	});
 	assert.equal(item.cover, "cover.jpg");
 	await assert.rejects(source.resolve({ ...item, format: "pdf" }), /form was not found/);
