@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "oceanofpdf",
 	name: "OceanofPDF",
-	version: "0.1.9",
+	version: "0.1.10",
 	icon: "OPDF",
 	description: "OceanofPDF download-source extension with separate EPUB/PDF results, OceanofPDF-first search, optional ReadRobe fallback, and POST form downloads.",
 	contentType: "books",
@@ -58,11 +58,20 @@ __cinderExport = {
 		return this._error("OceanofPDF search is temporarily unavailable. Please retry later.", Number(resp && resp.status));
 	},
 
+	_searchTimeoutError: function(context) {
+		if (context && context.signal && context.signal.aborted) return this._error("OceanofPDF search cancelled.");
+		// Keep a confirmed browser check actionable even when the hidden browser
+		// is still waiting when this search's deadline expires. Never carry this
+		// state into another search, or mistake a plain network timeout for it.
+		if (context && context.challengeDetected) return this._pageError({ status: 403 });
+		return this._error("OceanofPDF search timed out. Open extension settings > Verify Website if a browser check is required.");
+	},
+
 	_assertSearchActive: function(context) {
 		if (!context) return;
 		if (context.signal && context.signal.aborted) throw this._error("OceanofPDF search cancelled.");
 		if (context.expired || Date.now() >= context.deadline) {
-			throw this._error("OceanofPDF search timed out. Open extension settings > Verify Website if a browser check is required.");
+			throw this._searchTimeoutError(context);
 		}
 	},
 
@@ -110,6 +119,7 @@ __cinderExport = {
 		} catch (_) {
 			// Network errors can still succeed through the existing browser session.
 		}
+		if (context && (Number(resp && resp.status) === 403 || this._isChallenge(resp && resp.data))) context.challengeDetected = true;
 		this._assertSearchActive(context);
 		if (this._isUsableHtml(resp)) return resp;
 		// Do not spend another browser timeout on an offline mirror or real HTTP
@@ -135,6 +145,7 @@ __cinderExport = {
 		if (context) this._searchBrowserTask = task;
 		try {
 			var browserResp = await task;
+			if (context && (Number(browserResp && browserResp.status) === 403 || this._isChallenge(browserResp && browserResp.data))) context.challengeDetected = true;
 			this._assertSearchActive(context);
 			if (this._isUsableHtml(browserResp)) return browserResp;
 			// A browser timeout can appear as either status 0 or empty HTTP 200.
@@ -308,7 +319,7 @@ __cinderExport = {
 
 	search: function(query, page, selections, options) {
 		var self = this;
-		var context = { deadline: Date.now() + this._SEARCH_BUDGET_MS, expired: false, signal: options && options.signal };
+		var context = { deadline: Date.now() + this._SEARCH_BUDGET_MS, expired: false, challengeDetected: false, signal: options && options.signal };
 		var work = async function() {
 			self._assertSearchActive(context);
 			await self._getBrowserUserAgent(self._BASE_URL);
@@ -350,7 +361,7 @@ __cinderExport = {
 				if (settled) return;
 				settled = true;
 				context.expired = true;
-				reject(self._error("OceanofPDF search timed out. Open extension settings > Verify Website if a browser check is required."));
+				reject(self._searchTimeoutError(context));
 			}, self._SEARCH_BUDGET_MS);
 			work().then(function(result) { if (!settled) { settled = true; resolve(result); } },
 				function(error) { if (!settled) { settled = true; reject(error); } });

@@ -144,7 +144,7 @@ test('deadline rejects stuck requests; late completion starts no more work', asy
   let release;
   const h = harness(t, { fetch: () => new Promise(resolve => { release = resolve; }) });
   h.source._SEARCH_BUDGET_MS = 20;
-  await assert.rejects(h.source.search('test', 0), /timed out/);
+  await assert.rejects(h.source.search('test', 0), e => e.status === 0 && /timed out/.test(e.message));
   release({ status: 403, data: challenge });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.calls.length, 1);
@@ -186,7 +186,7 @@ test('missing or malformed HTTP status cannot become a successful connection', t
   }
 });
 
-test('a slow browser cannot launch mirror work after the caller deadline', async t => {
+test('a slow browser preserves confirmed verification failure and cannot launch mirror work after the caller deadline', async t => {
   let release;
   const h = harness(t, {
     fetch: async () => ({ status: 403, data: challenge }),
@@ -195,12 +195,93 @@ test('a slow browser cannot launch mirror work after the caller deadline', async
   const pending = h.source.search('test', 0);
   await new Promise(resolve => setImmediate(resolve));
   h.expire();
-  await assert.rejects(pending, /timed out/);
+  await assert.rejects(pending, e => e.status === 403 && e.stopSearch && /Verify Website/.test(e.message) && !/timed out/.test(e.message));
   release(ok(results));
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.calls.length, 1);
   assert.equal(h.browserCalls.length, 1);
   assert.equal(h.source._searchBrowserTask, null);
+});
+
+for (const response of [{ status: 403, data: '' }, { status: 200, data: challenge }, { status: 503, data: challenge }]) {
+  test(`native challenge ${response.status} remains actionable while the browser is pending at deadline`, async t => {
+    let release;
+    const h = harness(t, {
+      fetch: async () => response,
+      browser: () => new Promise(resolve => { release = resolve; }),
+    });
+    const pending = h.source.search('test', 0);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.browserCalls.length, 1);
+    h.expire();
+    await assert.rejects(pending, e => e.status === 403 && e.stopSearch && /Verify Website/.test(e.message));
+    release(ok(results));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.calls.length, 1);
+  });
+}
+
+test('a browser-only challenge is remembered if the fallback later exceeds the deadline', async t => {
+  let release;
+  const h = harness(t, {
+    fetch: url => url.startsWith(primary)
+      ? Promise.resolve({ status: 0, data: '' })
+      : new Promise(resolve => { release = resolve; }),
+    browser: async () => ok(challenge),
+  });
+  const pending = h.source.search('test', 0);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.calls.length, 2);
+  h.expire();
+  await assert.rejects(pending, e => e.status === 403 && /Verify Website/.test(e.message));
+  release(ok(results));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.browserCalls.length, 1);
+});
+
+test('an unconfirmed network failure with a pending browser remains a timeout', async t => {
+  let release;
+  const h = harness(t, {
+    fetch: async () => ({ status: 0, data: '' }),
+    browser: () => new Promise(resolve => { release = resolve; }),
+  });
+  const pending = h.source.search('test', 0);
+  await new Promise(resolve => setImmediate(resolve));
+  h.expire();
+  await assert.rejects(pending, e => e.status === 0 && /timed out/.test(e.message));
+  release(ok(results));
+  await new Promise(resolve => setImmediate(resolve));
+});
+
+test('a cancelled search keeps cancellation priority over a remembered challenge at deadline', async t => {
+  let release;
+  const signal = { aborted: false };
+  const h = harness(t, {
+    fetch: async () => ({ status: 403, data: challenge }),
+    browser: () => new Promise(resolve => { release = resolve; }),
+  });
+  const pending = h.source.search('test', 0, undefined, { signal });
+  await new Promise(resolve => setImmediate(resolve));
+  signal.aborted = true;
+  h.expire();
+  await assert.rejects(pending, e => e.status === 0 && /cancelled/.test(e.message));
+  release(ok(results));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.source._searchBrowserTask, null);
+});
+
+test('a confirmed challenge that completes within budget succeeds and does not taint the next search', async t => {
+  const h = harness(t, { fetch: async () => ({ status: 403, data: challenge }) });
+  assert.equal((await h.source.search('test', 0)).length, 2);
+  h.expire();
+  assert.equal(h.source._searchBrowserTask, null);
+  h.source._SEARCH_BUDGET_MS = 20;
+  let release;
+  h.cinder.fetch = () => new Promise(resolve => { release = resolve; });
+  await assert.rejects(h.source.search('next', 0), e => e.status === 0 && /timed out/.test(e.message));
+  release(ok(results));
+  await new Promise(resolve => setImmediate(resolve));
 });
 
 test('detail browser waits for download form fields, preserving the POST resolver', async t => {
