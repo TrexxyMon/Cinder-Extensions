@@ -23,7 +23,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **MangaKakalot** | Manga | Read manga, manhwa, and manhua from MangaKakalot. No debrid required. |
 | **OPDS Catalog** | Books | Connect to your OPDS-compatible server, including Komga, Kavita, Calibre-web, and COPS. |
 | **Anna's Archive** | Books | On-device search and direct downloads, with optional TorBox resolution without a supporter key. |
-| **Z-Library** | Books | Search, discover, and download ebooks through your Z-Library account. Created by Stick. |
+| **Z-Library** | Books | Anonymous search and account downloads with automatic API mirror fallback, optional session keys, language/format preferences, and discovery shelves. Created by Stick. |
 | **Bookracy** | Books | Search and download ebooks, comics, and manga from Bookracy's open library API. |
 | **LibGen** | Books | Direct download-source extension with on-device link resolution. |
 | **Mayberry** | Books | Search and download books from the federated Mayberry library network, with covers, metadata, and New Releases, New Arrivals, and Top Reads discovery shelves. |
@@ -70,6 +70,42 @@ and [added .gl support](https://feedback.torbox.app/changelog/v84). As of Octobe
 2026, its [live host list](https://api.torbox.app/v1/api/webdl/hosters) marks Anna's
 Archive disabled due to CAPTCHA. This extension option cannot fix that upstream
 outage or guarantee successful downloads while the host is disabled.
+
+### Z-Library connection and fallback settings
+
+Version 1.3.0 keeps existing saved domains, language preferences, credentials,
+book IDs, and discovery sections. Search can still run without an account;
+downloads require your account or session keys.
+
+- **Automatic Mirror Fallback** is on by default. It tries another API mirror
+  when a host is unreachable, challenged, or returns unusable data, and remembers
+  the working mirror separately from your selected domain. Turn it off to use
+  only the selected domain.
+- The maintained mirror list refreshes in the background at most weekly after
+  a successful refresh. A failed refresh retains the cached list; searches do not
+  wait for that refresh. Requests share a bounded deadline rather than stacking
+  a full timeout for every mirror.
+- **Preferred Format** optionally restricts search to EPUB, PDF, MOBI, or AZW3.
+  Existing language preferences still apply.
+- **Remix User ID / Remix User Key** optionally replace password sign-in. Supply
+  both or leave both blank. Passwords and session secrets use Cinder's secure
+  storage. Rejected account credentials and download limits stop retries.
+- After a search or sign-in browser challenge, fast API mirrors are tried
+  first. If none succeeds, one bounded, silent public-homepage load can complete
+  a noninteractive browser check. The original POST is then retried once with
+  fresh same-origin cookies and its unchanged body. Credentials and search text
+  are never put into the warm-up URL or headers. Healthy requests do not open a
+  browser; simultaneous warm-ups for the same origin share the work.
+- **Verify Website** remains available for required interactive checks. Browser
+  GET fallback is also supported, but neither path solves a required checkbox
+  or bypasses account limits. Browser features are optional on older Cinder
+  versions; no new app API is required for API search/downloads.
+
+Fallback design is informed by
+[imprisonedmind/cinder-zlib](https://github.com/imprisonedmind/cinder-zlib)
+(Unlicense). Mirror data comes from the maintained
+[ZlibraryKO domain list](https://github.com/ZlibraryKO/zlibrary.koplugin/blob/main/assets/domains.json).
+The separate private Z-Library Direct extension is unchanged.
 
 ## How To Install
 

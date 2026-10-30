@@ -1,21 +1,13 @@
-// Z-Library — source de telechargement pour Cinder.
-//
-// Tout tient dans ce fichier : aucun serveur, aucun service tiers, aucun secret ailleurs
-// que dans le `secureStore` de l'application.
-//
-// LE CHEMIN EMPRUNTE EST CELUI QUI A ETE PROUVE. Mesure du 2026-08-21 : rendre a Cinder
-// un `{ url, headers }` fonctionne (import et lecture corrects), tandis que lui rendre un
-// magnet a debrider fait planter l'application a 100 % du telechargement. Z-Library sert
-// des liens directs authentifies par cookie : c'est donc exactement la forme qui marche.
-//
-// Les endpoints et les pieges viennent du greffon KOReader `ZlibraryKO/zlibrary.koplugin`,
-// lu plutot que devine.
+// Z-Library account extension, originally created by Stick.
+// Automatic API mirror fallback and optional session-key sign-in are informed by
+// https://github.com/imprisonedmind/cinder-zlib (Unlicense).
+// All network/source behavior stays in this extension; no app changes required.
 
 var Zlibrary = {};
 
 Zlibrary.id = "zlibrary";
 Zlibrary.name = "Z-Library";
-Zlibrary.version = "1.2.1";
+Zlibrary.version = "1.3.0";
 Zlibrary.icon = "book-outline";
 Zlibrary.description = "Search, discover, and download ebooks through your Z-Library account.";
 
@@ -36,23 +28,15 @@ Zlibrary.capabilities = {
 };
 
 Zlibrary.getSettings = function () {
+  var candidates = this._settingsBase || "https://z-library.ec";
   return [
     {
-      // EN REGLAGE, PAS EN DUR. Les domaines de Z-Library tombent regulierement ; sans
-      // ce champ, chaque saisie judiciaire rendrait l'extension inutilisable jusqu'a
-      // republication. Ici, l'utilisateur change une ligne et repart.
-      //
-      // MESURE DU 2026-08-21, depuis la France :
-      //   z-library.ec, z-lib.gd, z-lib.gl  -> l'API repond en JSON
-      //   z-lib.fm, z-lib.sk               -> defi navigateur DiamWall, infranchissable
-      //                                       en HTTP simple (307 en boucle puis 513)
-      //   z-library.gs, 1lib.sk            -> injoignables
-      // z-library.ec est celui que Z-Library recommande pour la France.
+      // Preserve the existing user-selected origin and storage key.
       id: "domaine",
       label: "Z-Library Domain",
       type: "text",
       defaultValue: "z-library.ec",
-      placeholder: "z-library.ec, z-lib.gd, z-lib.gl",
+      placeholder: "z-library.ec, librella.fi, lexlib.fi",
     },
     {
       id: "langues",
@@ -62,179 +46,365 @@ Zlibrary.getSettings = function () {
     },
     { id: "email", label: "Email Address", type: "text", placeholder: "you@example.com" },
     { id: "motdepasse", label: "Password", type: "password", placeholder: "Your Z-Library password" },
+    { id: "automatic_mirrors", label: "Automatic Mirror Fallback", type: "toggle", defaultValue: true,
+      subtitle: "Try another API mirror when the selected domain is unavailable." },
+    { id: "preferred_format", label: "Preferred Format", type: "select", defaultValue: "", options: [
+      { label: "Any", value: "" }, { label: "EPUB", value: "epub" }, { label: "PDF", value: "pdf" },
+      { label: "MOBI", value: "mobi" }, { label: "AZW3", value: "azw3" },
+    ] },
+    { id: "remix_userid", label: "Remix User ID (optional)", type: "text", placeholder: "From your signed-in browser" },
+    { id: "remix_userkey", label: "Remix User Key (optional)", type: "password", placeholder: "From your signed-in browser",
+      subtitle: "Use both session keys instead of email and password." },
+    { id: "verify_website", label: "Verify Website", type: "webview", url: candidates,
+      userAgent: this.UA, subtitle: "Complete any required browser check, then return and retry." },
   ];
 };
 
 Zlibrary.UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
 
-// ─── Reglages et adresse de base ─────────────────────────────────────────────
 
-Zlibrary._lire = async function (id, secret) {
-  var v = await (secret ? cinder.secureStore : cinder.store).get(id);
-  return v ? String(v).trim() : "";
+// Mirror strategy informed by imprisonedmind/cinder-zlib (Unlicense) and
+// ZlibraryKO/zlibrary.koplugin. Existing settings/session/result keys stay stable.
+Zlibrary._MIRROR_SOURCE = "https://raw.githubusercontent.com/ZlibraryKO/zlibrary.koplugin/main/assets/domains.json";
+Zlibrary._MIRROR_TTL = 7 * 24 * 60 * 60 * 1000;
+Zlibrary._SEEDS = ["z-library.ec", "librella.fi", "lexlib.fi", "bookabooki.fi", "article.sk", "1lib.sk", "z-lib.gd", "z-lib.gl", "z-library.sk"];
+Zlibrary._mirrorRefresh = null;
+Zlibrary._mirrorRefreshAt = 0;
+Zlibrary._browserTask = null;
+Zlibrary._warmupTask = null;
+Zlibrary._loginTask = null;
+
+Zlibrary._lire = async function (key, secret) {
+  var value = await (secret ? cinder.secureStore : cinder.store).get(key);
+  return value == null ? "" : String(value).trim();
 };
-
-/**
- * Adresse de base, depuis le REGLAGE et lui seul.
- *
- * Tolere « z-library.ec », « https://z-library.ec/ » et meme un « …/eapi » colle par
- * erreur.
- *
- * Le repli doit rester ALIGNE sur le `defaultValue` du reglage : il valait z-library.sk,
- * un domaine derriere DiamWall, ce qui faisait echouer l'extension reglage vide alors
- * meme que l'interface annoncait z-library.ec.
- */
+Zlibrary._error = function (kind, message) {
+  var error = new Error(message); error.kind = kind; return error;
+};
+Zlibrary._normalizeBase = function (value) {
+  var host = String(value || "").trim().replace(/^https:\/\//i, "").replace(/\/+$/, "").replace(/\/eapi$/i, "").toLowerCase();
+  // A mirror is an HTTPS origin, never a URL containing credentials, a port,
+  // a path, or a private IP. Do not turn arbitrary feed strings into auth URLs.
+  if (host.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)) return "";
+  return "https://" + host;
+};
 Zlibrary._base = async function () {
-  var brut = (await this._lire("domaine", false)) || "z-library.ec";
-  var url = /^https?:\/\//i.test(brut) ? brut : "https://" + brut;
-  return url.replace(/\/+$/, "").replace(/\/eapi$/i, "");
+  var base = this._normalizeBase((await this._lire("domaine", false)) || "z-library.ec");
+  if (!base) throw this._error("config", "Enter a valid HTTPS Z-Library domain in the extension settings.");
+  this._settingsBase = base;
+  return base;
 };
-
-Zlibrary._form = function (champs) {
-  var parts = [];
-  for (var k in champs) {
-    if (Object.prototype.hasOwnProperty.call(champs, k) && champs[k] !== undefined) {
-      parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(String(champs[k])));
+Zlibrary._form = function (fields) {
+  return Object.keys(fields).filter(function (key) { return fields[key] !== undefined; }).map(function (key) {
+    return encodeURIComponent(key) + "=" + encodeURIComponent(String(fields[key]));
+  }).join("&");
+};
+Zlibrary._parseJson = function (value) {
+  for (var unwrap = 0; unwrap < 3; unwrap++) {
+    if (value && typeof value === "object") return Array.isArray(value) ? null : value;
+    if (typeof value !== "string" || value.length > 4 * 1024 * 1024) return null;
+    var text = value.replace(/^\uFEFF/, "").trim();
+    if (!text || text.charAt(0) === "<") return null;
+    try { value = JSON.parse(text); continue; } catch (_) { /* Bounded trailing-noise recovery below. */ }
+    var start = text.indexOf("{"), depth = 0, quoted = false, escaped = false;
+    if (start < 0) return null;
+    for (var i = start; i < text.length; i++) {
+      var ch = text.charAt(i);
+      if (quoted) { if (escaped) escaped = false; else if (ch === "\\") escaped = true; else if (ch === '"') quoted = false; continue; }
+      if (ch === '"') quoted = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}" && --depth === 0) {
+        try { return JSON.parse(text.slice(start, i + 1)); } catch (_) { return null; }
+      }
+    }
+    return null;
+  }
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+};
+Zlibrary._active = function (context) {
+  if (context.signal && context.signal.aborted) throw this._error("cancel", "Z-Library request cancelled.");
+  if (context.expired || Date.now() >= context.deadline) throw this._error("timeout", "Z-Library request timed out. Retry or choose another domain in extension settings.");
+};
+Zlibrary._wait = function (work, milliseconds, error) {
+  return new Promise(function (resolve, reject) {
+    var done = false, timer = setTimeout(function () { if (!done) { done = true; reject(error); } }, milliseconds);
+    function finish(fn, value) {
+      if (done) return; done = true;
+      if (typeof clearTimeout === "function") clearTimeout(timer);
+      fn(value);
+    }
+    Promise.resolve(work).then(function (value) { finish(resolve, value); }, function (err) { finish(reject, err); });
+  });
+};
+Zlibrary._run = async function (budget, options, work) {
+  var context = { deadline: Date.now() + budget, expired: false, signal: options && options.signal };
+  try { this._active(context); return await this._wait(work(context), budget, this._error("timeout", "Z-Library request timed out. Retry or choose another domain in extension settings.")); }
+  finally { context.expired = true; }
+};
+Zlibrary._storedJson = async function (key) { try { return this._parseJson(await cinder.store.get(key)); } catch (_) { return null; } };
+Zlibrary._cache = async function (key, value) {
+  try { await cinder.store.set(key, JSON.stringify(value)); } catch (_) { /* Optional cache must not fail a successful request. */ }
+};
+Zlibrary._refreshMirrors = function (cached) {
+  var now = Date.now(), self = this;
+  if (cached && cached.at <= now && now - cached.at < this._MIRROR_TTL) return;
+  if (this._mirrorRefresh || (this._mirrorRefreshAt && now - this._mirrorRefreshAt < 60000)) return;
+  this._mirrorRefreshAt = now;
+  this._mirrorRefresh = Promise.resolve().then(async function () {
+    var response = await self._wait(cinder.fetch(self._MIRROR_SOURCE, { headers: { Accept: "application/json" }, timeout: 3000 }), 3500, self._error("mirror", "Mirror list unavailable."));
+    if (!response || Number(response.status) !== 200) return;
+    var data = self._parseJson(response.data), domains = [];
+    if (!data || Number(data.success) !== 1 || !Array.isArray(data.domains)) return;
+    data.domains.slice(0, 100).forEach(function (entry) {
+      var base = entry && entry.contentAvailable !== false && entry.isRedirector !== true && self._normalizeBase(entry.domain);
+      if (base && domains.indexOf(base) < 0) domains.push(base);
+    });
+    if (domains.length) await self._cache("mirror_cache_v1", { at: Date.now(), domains: domains });
+  }).catch(function () { /* Retain the last cached list on errors or offline devices. */ }).then(function () { self._mirrorRefresh = null; });
+};
+Zlibrary._candidates = async function () {
+  var preferred = await this._base();
+  var automatic = await cinder.store.get("automatic_mirrors");
+  if (automatic === false || automatic === "false" || automatic === "0") return { preferred: preferred, domains: [preferred] };
+  var remembered = await this._storedJson("working_mirror_v1");
+  var cached = await this._storedJson("mirror_cache_v1");
+  var domains = [], self = this;
+  function add(value) { var base = self._normalizeBase(value); if (base && domains.indexOf(base) < 0) domains.push(base); }
+  if (remembered && remembered.preferred === preferred) add(remembered.base);
+  add(preferred);
+  this._SEEDS.forEach(add);
+  if (cached && Array.isArray(cached.domains)) cached.domains.slice(0, 100).forEach(add);
+  // Refresh alongside the first API request; never hold search up for this list.
+  this._refreshMirrors(cached);
+  return { preferred: preferred, domains: domains, remembered: remembered };
+};
+Zlibrary._remember = async function (candidates, base) {
+  this._settingsBase = base;
+  this._lastChallengeBase = null;
+  if (candidates.remembered && candidates.remembered.preferred === candidates.preferred && candidates.remembered.base === base) return;
+  await this._cache("working_mirror_v1", { preferred: candidates.preferred, base: base });
+};
+Zlibrary._withBrowserCookies = async function (base, headers, includeAnonymous) {
+  if (!headers.Cookie && !includeAnonymous || typeof cinder.getBrowserSessionHeaders !== "function") return headers;
+  try {
+    var stored = await this._wait(cinder.getBrowserSessionHeaders(base), 700, this._error("mirror", "Browser session unavailable."));
+    var value = stored && (stored.Cookie || stored.cookie);
+    if (typeof value !== "string" || value.length > 16384 || /[\r\n\x00]/.test(value)) return headers;
+    var pairs = String(headers.Cookie || "").split(";").map(function (pair) { return pair.trim(); }).filter(Boolean), names = pairs.map(function (pair) { return pair.split("=")[0]; });
+    value.split(";").forEach(function (part) {
+      var pair = part.trim(), at = pair.indexOf("="), name = pair.slice(0, at);
+      // Explicit account keys always win over cookies from browser sign-in.
+      if (at > 0 && /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) && names.indexOf(name) < 0) { names.push(name); pairs.push(pair); }
+    });
+    return pairs.length ? Object.assign({}, headers, { Cookie: pairs.join("; ") }) : headers;
+  } catch (_) { return headers; }
+};
+Zlibrary._isChallenge = function (data) {
+  return typeof data === "string" && /<title[^>]*>\s*(?:Just a moment|Attention Required)|Checking your browser|Verifying your browser|cf[-_]challenge|challenge-platform|DiamWall|enable javascript and cookies/i.test(data);
+};
+Zlibrary._isQuota = function (data) {
+  var detail = data && (data.error || data.message), message = detail && typeof detail === "object" ? String(detail.message || detail.code || "") : String(detail || "");
+  return !!(data && (data.allowDownload === false || data.file && data.file.allowDownload === false)) || /daily.{0,25}limit|download.{0,25}limit|quota|limit.{0,25}(?:reached|exceeded)/i.test(message);
+};
+Zlibrary._response = function (response, operation) {
+  if (!response) throw this._error("mirror", "Z-Library returned no response.");
+  var status = Number(response.status), data = this._parseJson(response.data);
+  if (this._isChallenge(response.data)) throw this._error("challenge", "Z-Library requires website verification. Open Verify Website in extension settings, then retry.");
+  if (this._isQuota(data)) throw this._error("quota", "Your daily Z-Library download limit has been reached. Try again after it resets.");
+  if (status === 429) throw this._error("rate", "Z-Library is temporarily limiting requests. Please wait before retrying.");
+  if (!status || status === 408 || status >= 500 || !data) throw this._error("mirror", "Z-Library did not return usable API data (" + operation + ").");
+  if (status === 401 || status === 403) throw this._error("auth", "Z-Library session expired or was rejected. Check your account settings.");
+  if (status < 200 || status >= 300) throw this._error("api", "Z-Library returned HTTP " + status + " (" + operation + ").");
+  return data;
+};
+Zlibrary._validate = function (data, operation) {
+  var detail = data && (data.error || data.message), message = detail && typeof detail === "object" ? String(detail.message || detail.code || "") : String(detail || "");
+  if (this._isQuota(data)) {
+    throw this._error("quota", "Your daily Z-Library download limit has been reached. Try again after it resets.");
+  }
+  if (data && (Number(data.success) === 0 || data.error)) {
+    if (operation === "sign in") throw this._error("credentials", "Z-Library rejected the sign-in. Check your credentials or use session keys in extension settings.");
+    if (/auth|session|unauthor|log.?in|sign.?in|user.{0,12}(?:invalid|expired|not found)/i.test(message)) throw this._error("auth", "Z-Library session expired or was rejected.");
+    throw this._error("api", "Z-Library rejected the " + operation + " request.");
+  }
+  var valid = operation === "sign in" ? Number(data.success) === 1 && (data.user || data.response)
+    : operation === "download link" ? Number(data.success) === 1 && data.file
+    : Array.isArray(data.books) || Array.isArray(data.results) || data.exactMatch && Array.isArray(data.exactMatch.books);
+  if (!valid) throw this._error("mirror", "Z-Library returned an unexpected API response (" + operation + ").");
+  return data;
+};
+Zlibrary._requestAt = async function (base, path, options, operation, context, freshCookies) {
+  this._active(context);
+  var headers = await this._withBrowserCookies(base, Object.assign({}, options.headers || {}, { Referer: base + "/" }), freshCookies);
+  this._active(context);
+  var timeout = Math.min(3000, Math.max(1, context.deadline - Date.now()));
+  var response, request = Object.assign({}, options, { headers: headers, timeout: timeout, signal: context.signal });
+  try { response = await this._wait(cinder.fetch(base + path, request), timeout, this._error("mirror", "Z-Library mirror timed out.")); }
+  catch (err) { if (err && err.kind) throw err; throw this._error("mirror", "Z-Library mirror could not be reached."); }
+  this._active(context);
+  return this._validate(this._response(response, operation), operation);
+};
+Zlibrary._warmPostOrigin = async function (base, context) {
+  this._active(context);
+  var budget = Math.min(5000, context.deadline - Date.now() - 4000);
+  if (context.warmed || budget < 1000 || typeof cinder.fetchBrowser !== "function") return false;
+  context.warmed = true;
+  var warm = this._warmupTask, self = this;
+  // Share only an in-flight warm-up for this origin. Never queue behind a
+  // different browser operation or create several hidden WebViews at once.
+  if (!warm || warm.base !== base) {
+    if (this._browserTask) return false;
+    var headers = Object.assign(this._headers(null), {
+      Accept: "text/html,application/xhtml+xml", Referer: base + "/",
+      "X-Cinder-Suppress-Interactive": "1", "X-Cinder-Visible-Layout": "1",
+      "X-Cinder-Max-Wait-Ms": String(Math.max(1000, budget - 500)),
+    });
+    // Only load the public home page. Credentials/search text never enter a
+    // browser URL, header or POST here; the original API POST is retried below.
+    var task = Promise.resolve().then(function () {
+      self._active(context);
+      return cinder.fetchBrowser(base + "/", { method: "GET", headers: headers, timeout: budget });
+    });
+    warm = { base: base, promise: task };
+    this._warmupTask = warm;
+    this._browserTask = task;
+    var clear = function () {
+      if (self._browserTask === task) self._browserTask = null;
+      if (self._warmupTask === warm) self._warmupTask = null;
+    };
+    task.then(clear, clear);
+  }
+  try {
+    var reply = await this._wait(warm.promise, budget, this._error("challenge", "Website verification is still required."));
+    this._active(context);
+    return !!(reply && Number(reply.status) >= 200 && Number(reply.status) < 300 && typeof reply.data === "string" && reply.data.trim() && !this._isChallenge(reply.data));
+  } catch (_) { this._active(context); return false; }
+};
+Zlibrary._api = async function (path, options, operation, context) {
+  this._active(context);
+  var candidates = await this._candidates(), last, challenged;
+  var canWarmPost = options.method === "POST" && typeof cinder.fetchBrowser === "function";
+  for (var i = 0; i < candidates.domains.length && i < 12; i++) {
+    this._active(context);
+    // Leave time for one browser check plus the unchanged POST retry when
+    // mirrors are challenged. Healthy mirrors still win without a WebView.
+    if (challenged && canWarmPost && context.deadline - Date.now() < 8500) break;
+    var base = candidates.domains[i];
+    try {
+      var data = await this._requestAt(base, path, options, operation, context);
+      // Remember only validated API responses, including legitimate empty searches.
+      this._active(context);
+      await this._remember(candidates, base);
+      return { data: data, base: base, domains: candidates.domains };
+    } catch (err) {
+      this._active(context);
+      if (!err || (err.kind !== "mirror" && err.kind !== "challenge")) throw err;
+      last = err;
+      if (err.kind === "challenge" && !challenged) { challenged = base; this._lastChallengeBase = base; this._lastChallengePreferred = candidates.preferred; this._settingsBase = base; }
     }
   }
-  return parts.join("&");
+  if (challenged && canWarmPost && await this._warmPostOrigin(challenged, context)) {
+    try {
+      var retried = await this._requestAt(challenged, path, options, operation, context, true);
+      this._active(context);
+      await this._remember(candidates, challenged);
+      return { data: retried, base: challenged, domains: candidates.domains };
+    } catch (err) {
+      this._active(context);
+      if (!err || (err.kind !== "mirror" && err.kind !== "challenge")) throw err;
+      last = err;
+    }
+  }
+  // API mirrors are faster than a browser. Only a GET is safe to retry through
+  // older hosts which may not preserve POST bodies. Never send login in a URL.
+  if (challenged && (options.method || "GET") === "GET" && typeof cinder.fetchBrowser === "function" && !this._browserTask && context.deadline - Date.now() > 2000) {
+    var remaining = Math.min(8000, context.deadline - Date.now());
+    var task = cinder.fetchBrowser(challenged + path, { headers: Object.assign({}, options.headers || {}, {
+      "X-Cinder-Suppress-Interactive": "1", "X-Cinder-Visible-Layout": "1", "X-Cinder-Max-Wait-Ms": String(Math.max(1000, remaining - 500)),
+    }), timeout: remaining });
+    this._browserTask = task;
+    var self = this;
+    Promise.resolve(task).then(function () { if (self._browserTask === task) self._browserTask = null; }, function () { if (self._browserTask === task) self._browserTask = null; });
+    try {
+      var browser = await this._wait(task, remaining, this._error("challenge", "Z-Library requires website verification. Open Verify Website in extension settings."));
+      this._active(context);
+      var body = browser && browser.data;
+      if (typeof body === "string" && /^\s*</.test(body) && typeof cinder.parseHTML === "function" && !this._isChallenge(body)) {
+        var pre = cinder.parseHTML(body).querySelector("pre"); if (pre) body = pre.text();
+      }
+      var result = this._validate(this._response({ status: browser && browser.status, data: body }, operation), operation);
+      await this._remember(candidates, challenged);
+      return { data: result, base: challenged, domains: candidates.domains };
+    } catch (err) { this._active(context); if (err && err.kind !== "mirror" && err.kind !== "challenge") throw err; last = err; }
+  }
+  if (challenged) throw this._error("challenge", "Z-Library requires website verification. Open Verify Website in extension settings, then retry.");
+  throw last || this._error("mirror", "Z-Library mirrors are unavailable. Retry or change the domain in extension settings.");
 };
-
-// ─── HTTP ────────────────────────────────────────────────────────────────────
-
-/**
- * Appelle l'API et rend l'objet JSON.
- *
- * DEUX PIEGES TRAITES ICI. D'abord une reponse HTML : domaine mort, saisie judiciaire ou
- * defi anti-bot rendent une page, pas du JSON, et `JSON.parse` echouerait sur un message
- * incomprehensible. Ensuite le fait que `cinder.fetch` rend `{ status, data, headers }`
- * ou `data` est du TEXTE : il faut decoder soi-meme.
- */
-Zlibrary._appel = async function (url, options, contexte) {
-  var r;
-  try {
-    r = await cinder.fetch(url, options);
-  } catch (e) {
-    // Un domaine derriere DiamWall boucle en 307 sur lui-meme : selon le client, cela
-    // remonte comme une exception plutot que comme du HTML. Les deux cas appellent le
-    // MEME geste, donc le meme message — sans quoi l'utilisateur lit « injoignable » et
-    // ne sait pas qu'il suffit de changer de domaine.
-    throw new Error(
-      "Z-Library could not be reached on this domain (" + contexte + "). "
-      + "Try z-library.ec, z-lib.gd, or z-lib.gl in the extension settings."
-    );
-  }
-  if (!r) throw new Error("Z-Library returned no response (" + contexte + ").");
-
-  var corps = String(r.data || "").trim();
-  if (corps.charAt(0) === "<") {
-    throw new Error(
-      "Z-Library returned a web page instead of API data (" + contexte + "). "
-      + "This domain is behind a browser challenge or unavailable. Try "
-      + "z-library.ec, z-lib.gd, or z-lib.gl in the extension settings."
-    );
-  }
-  if (r.status < 200 || r.status >= 300) {
-    throw new Error("Z-Library returned HTTP " + r.status + " (" + contexte + ").");
-  }
-  try {
-    return JSON.parse(corps);
-  } catch (e) {
-    throw new Error("Z-Library returned an unreadable response (" + contexte + ").");
-  }
+Zlibrary._manualSession = async function () {
+  var id = await this._lire("remix_userid", false), key = await this._lire("remix_userkey", true);
+  if (!id && !key) return null;
+  if (!id || !key || !/^\d+$/.test(id) || /[\x00-\x20\x7f;,]/.test(key)) throw this._error("config", "Enter both a valid Remix User ID and Remix User Key, or clear both to use email and password.");
+  return { id: id, cle: key, manual: true };
 };
-
-// ─── Session ─────────────────────────────────────────────────────────────────
-//
-// La session tient en deux valeurs, `user_id` et `user_key`, renvoyees a la connexion et
-// rejouees ensuite en en-tete Cookie. On les garde dans le `secureStore` pour ne pas
-// refaire une connexion a chaque recherche.
-
-Zlibrary._connecter = async function () {
-  var email = await this._lire("email", false);
-  var mdp = await this._lire("motdepasse", true);
-  if (!email) throw new Error("Enter your email address in the Z-Library extension settings.");
-  if (!mdp) throw new Error("Enter your password in the Z-Library extension settings.");
-
-  var base = await this._base();
-  var corps = this._form({ email: email, password: mdp });
-
-  var j = await this._appel(base + "/eapi/user/login", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "Accept": "application/json, text/javascript, */*; q=0.01",
-      "X-Requested-With": "XMLHttpRequest",
-      "User-Agent": this.UA,
-    },
-    body: corps,
-    timeout: 30000,
-  }, "sign in");
-
-  var s = j.user || j.response || {};
-  if (Number(j.success) !== 1 || !s.id || !s.remix_userkey) {
-    var m = (j.error && j.error.message) || j.error || s.message || j.message;
-    throw new Error(m ? "Z-Library: " + m : "Z-Library rejected these credentials. Check them in the extension settings.");
-  }
-
-  await cinder.secureStore.set("user_id", String(s.id));
-  await cinder.secureStore.set("user_key", String(s.remix_userkey));
-  cinder.log("[zlibrary] session opened");
-  return { id: String(s.id), cle: String(s.remix_userkey) };
-};
-
-/**
- * Rend la session memorisee SANS se connecter.
- *
- * La recherche fonctionne sans compte (mesure du 2026-08-21) : exiger une connexion pour
- * chercher obligerait a saisir ses identifiants avant de savoir si l'extension sert a
- * quelque chose, et consommerait une session pour rien.
- */
 Zlibrary._sessionSiConnu = async function () {
-  var id = await this._lire("user_id", true);
-  var cle = await this._lire("user_key", true);
-  return id && cle ? { id: id, cle: cle } : null;
+  var manual = await this._manualSession(); if (manual) return manual;
+  var account = await this._lire("session_email_v1", true);
+  if (account && account !== await this._lire("email", false)) return null;
+  var id = await this._lire("user_id", true), key = await this._lire("user_key", true);
+  return id && key ? { id: id, cle: key } : null;
 };
-
-/** Rend la session memorisee, ou en ouvre une. Pour ce qui EXIGE un compte. */
-Zlibrary._session = async function (forcer) {
-  if (!forcer) {
-    var id = await this._lire("user_id", true);
-    var cle = await this._lire("user_key", true);
-    if (id && cle) return { id: id, cle: cle };
+Zlibrary._headers = function (session) {
+  var headers = { Accept: "application/json, text/javascript, */*; q=0.01", "Accept-Language": "en-US,en;q=0.9", "User-Agent": this.UA };
+  if (session) headers.Cookie = "remix_userid=" + encodeURIComponent(session.id) + "; remix_userkey=" + encodeURIComponent(session.cle);
+  return headers;
+};
+Zlibrary._enTetes = function (session, base) { return Object.assign(this._headers(session), { Referer: base + "/" }); };
+Zlibrary._session = async function (force, context) {
+  var manual = await this._manualSession();
+  if (manual) { if (force) throw this._error("auth", "These Z-Library session keys were rejected. Update or clear them in extension settings."); return manual; }
+  if (!force) { var saved = await this._sessionSiConnu(); if (saved) return saved; }
+  var email = await this._lire("email", false), password = await this._lire("motdepasse", true);
+  if (!email || !password) throw this._error("config", "Enter your Z-Library email and password, or session keys, in extension settings.");
+  // Share simultaneous login work; never persist the password in the normal store.
+  var signature = email + "\n" + password, self = this;
+  if (this._loginTask && this._loginTask.signature === signature) {
+    var shared = await this._loginTask.promise; this._active(context); return shared;
   }
-  return this._connecter();
+  var work = (async function () {
+    var headers = self._headers(null); headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
+    headers["X-Requested-With"] = "XMLHttpRequest";
+    var reply = await self._api("/eapi/user/login", { method: "POST", headers: headers, body: self._form({ email: email, password: password }) }, "sign in", context);
+    var user = reply.data.user || reply.data.response || {};
+    if (!user.id || !user.remix_userkey) throw self._error("auth", "Z-Library did not return a usable sign-in session.");
+    self._active(context);
+    if (email !== await self._lire("email", false) || password !== await self._lire("motdepasse", true) || await self._manualSession()) throw self._error("cancel", "Account settings changed. Please retry.");
+    await cinder.secureStore.set("user_id", String(user.id));
+    await cinder.secureStore.set("user_key", String(user.remix_userkey));
+    await cinder.secureStore.set("session_email_v1", email);
+    return { id: String(user.id), cle: String(user.remix_userkey) };
+  })();
+  this._loginTask = { signature: signature, promise: work };
+  try { return await work; } finally { if (this._loginTask && this._loginTask.promise === work) this._loginTask = null; }
+};
+Zlibrary._avecSession = async function (work, context) {
+  var session = await this._session(false, context);
+  try { return await work(session); }
+  catch (err) { if (!err || err.kind !== "auth") throw err; this._active(context); return work(await this._session(true, context)); }
 };
 
-Zlibrary._enTetes = function (session, base) {
-  return {
-    "Accept": "application/json, text/javascript, */*; q=0.01",
-    "User-Agent": this.UA,
-    "Referer": base + "/",
-    "Cookie": "remix_userid=" + session.id + "; remix_userkey=" + session.cle,
-  };
+Zlibrary._candidatesForSettings = async function () {
+  var preferred;
+  try { preferred = await this._base(); } catch (_) { return "https://z-library.ec"; }
+  var automatic = await cinder.store.get("automatic_mirrors");
+  if (automatic === false || automatic === "false" || automatic === "0") return preferred;
+  if (this._lastChallengeBase && this._lastChallengePreferred === preferred) return this._lastChallengeBase;
+  var remembered = await this._storedJson("working_mirror_v1");
+  return remembered && remembered.preferred === preferred && this._normalizeBase(remembered.base) || preferred;
 };
-
-/**
- * Rejoue l'appel une fois avec une session neuve si la premiere est refusee.
- *
- * Une cle memorisee finit par etre invalidee cote serveur. Sans cette reprise, l'extension
- * cesserait de fonctionner jusqu'a ce que l'utilisateur devine qu'il doit se reconnecter —
- * et rien dans l'interface ne le lui dirait.
- */
-Zlibrary._avecSession = async function (faire) {
-  var base = await this._base();
-  var session = await this._session(false);
-  try {
-    return await faire(session, base);
-  } catch (e) {
-    if (!/refus|401|403|authenti/i.test(String(e && e.message))) throw e;
-    cinder.warn("[zlibrary] session rejected, reconnecting");
-    return faire(await this._session(true), base);
-  }
+Zlibrary.getSettingsAsync = async function () {
+  this._settingsBase = await this._candidatesForSettings();
+  return this.getSettings();
 };
-
-// ─── Interface Cinder ────────────────────────────────────────────────────────
 
 Zlibrary.LIMITE = 30;
 
@@ -313,70 +483,6 @@ Zlibrary._versResultats = function (livres) {
   });
 };
 
-/** GET sur un endpoint qui rend { success, books }. */
-Zlibrary._livres = async function (chemin, contexte, session, base) {
-  var enTetes = session
-    ? this._enTetes(session, base)
-    : { "Accept": "application/json, text/javascript, */*; q=0.01", "User-Agent": this.UA, "Referer": base + "/" };
-
-  var j = await this._appel(base + chemin, { method: "GET", headers: enTetes, timeout: 30000 }, contexte);
-  if (Number(j.success) !== 1 || !j.books) {
-    var m = (j && ((typeof j.error === "object" && j.error.message) || j.error || j.message));
-    throw new Error("Z-Library: " + (m || "unexpected response (" + contexte + ")."));
-  }
-  return this._versResultats(j.books);
-};
-
-Zlibrary.search = async function (query, page) {
-  var q = String(query || "").trim();
-  if (!q) return [];
-
-  var base = await this._base();
-  var p = page && page > 1 ? page : 1;
-
-  // Connecte si on peut, anonyme sinon : chercher n'exige pas de compte.
-  var session = await this._sessionSiConnu();
-  var enTetes = session
-    ? this._enTetes(session, base)
-    : { "Accept": "application/json, text/javascript, */*; q=0.01", "User-Agent": this.UA, "Referer": base + "/" };
-  enTetes["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
-
-  var fields = { message: q, page: p, limit: this.LIMITE };
-  var languages = await this._languages();
-  for (var i = 0; i < languages.length; i++) fields["languages[" + i + "]"] = languages[i];
-
-  var j = await this._appel(base + "/eapi/book/search", {
-    method: "POST",
-    headers: enTetes,
-    body: this._form(fields),
-    timeout: 30000,
-  }, "search");
-
-  if (j.error) {
-    var m = (typeof j.error === "object" && j.error.message) || j.error;
-    throw new Error("Z-Library: " + m);
-  }
-
-  // Une recherche exacte range ses resultats ailleurs que la recherche large.
-  var livres = (j.books && j.books.length ? j.books : null)
-    || (j.exactMatch && j.exactMatch.books) || [];
-
-  cinder.log("[zlibrary] " + livres.length + " result(s) for \"" + q + "\""
-    + (session ? "" : " (anonymous)"));
-
-  return this._versResultats(livres);
-};
-
-// ─── Decouverte ──────────────────────────────────────────────────────────────
-//
-// Quatre sections, dont UNE SEULE fonctionne sans compte. Mesure du 2026-08-21 sur
-// z-library.ec : `/eapi/book/most-popular` repond 200 avec 100 livres en anonyme, tandis
-// que `recommended` et `saved` rendent 400 et `success: 0`.
-//
-// D'ou la regle appliquee ici : les sections personnelles n'apparaissent QUE si une
-// session existe. Les afficher puis echouer serait une promesse non tenue, et
-// l'utilisateur n'aurait aucun moyen de comprendre que le probleme est son compte.
-
 Zlibrary.SECTIONS = [
   { id: "populaires", title: "Popular", icon: "flame", compte: false, chemin: "/eapi/book/most-popular", pagine: false },
   { id: "recommandes", title: "Recommended for You", icon: "sparkles", compte: true, chemin: "/eapi/user/book/recommended", pagine: false },
@@ -384,75 +490,90 @@ Zlibrary.SECTIONS = [
   { id: "telecharges", title: "Already Downloaded", icon: "download", compte: true, chemin: "/eapi/user/book/downloaded", pagine: true },
 ];
 
-Zlibrary.getDiscoverSections = async function () {
-  var connecte = Boolean(await this._sessionSiConnu());
-  return this.SECTIONS
-    .filter(function (s) { return connecte || !s.compte; })
-    .map(function (s) { return { id: s.id, title: s.title, icon: s.icon }; });
+Zlibrary._books = function (data) {
+  var arrays = [data.books, data.exactMatch && data.exactMatch.books, data.results];
+  for (var i = 0; i < arrays.length; i++) if (Array.isArray(arrays[i]) && arrays[i].length) return arrays[i];
+  return [];
 };
-
-Zlibrary.getDiscoverItems = async function (sectionId, page) {
-  var section = this.SECTIONS.filter(function (s) { return s.id === sectionId; })[0];
-  if (!section) return [];
-
-  var p = page && page > 1 ? page : 1;
-  // Les sections non paginees rendent tout d'un bloc : redemander la page 2 renverrait
-  // les memes livres, que Cinder afficherait en double.
-  if (!section.pagine && p > 1) return [];
-
-  var base = await this._base();
-  var self = this;
-
-  if (!section.compte) {
-    return this._livres(section.chemin, section.title, await this._sessionSiConnu(), base);
-  }
-
-  return this._avecSession(function (session, baseSession) {
-    var chemin = section.chemin + "?page=" + p + "&limit=" + self.LIMITE;
-    return self._livres(chemin, section.title, session, baseSession);
+Zlibrary._livres = async function (path, label, session, context) {
+  var reply = await this._api(path, { method: "GET", headers: this._headers(session) }, label, context);
+  return this._versResultats(this._books(reply.data));
+};
+Zlibrary.search = function (query, page, selections, options) {
+  var self = this, q = String(query || "").trim();
+  if (!q) return Promise.resolve([]);
+  return this._run(13500, options, async function (context) {
+    var session = await self._sessionSiConnu(), fields = { message: q, page: page && page > 1 ? page : 1, limit: self.LIMITE };
+    var languages = await self._languages();
+    for (var i = 0; i < languages.length; i++) fields["languages[" + i + "]"] = languages[i];
+    var format = (await self._lire("preferred_format", false)).toLowerCase();
+    if (["epub", "pdf", "mobi", "azw3"].indexOf(format) >= 0) fields["extensions[]"] = format;
+    var body = self._form(fields);
+    async function search(activeSession) {
+      var headers = self._headers(activeSession); headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
+      return self._api("/eapi/book/search", { method: "POST", headers: headers, body: body }, "search", context);
+    }
+    var reply;
+    try { reply = await search(session); }
+    catch (err) {
+      // Public search works without an account. An expired saved session must
+      // not turn it into a login or make the user lose anonymous search.
+      if (!session || !err || err.kind !== "auth") throw err;
+      reply = await search(null);
+    }
+    return self._versResultats(self._books(reply.data));
   });
 };
 
-Zlibrary.resolve = async function (item) {
-  var e = (item && item.extra) || {};
-  if (!e.livreId || !e.hash) throw new Error("This result does not include a book identifier.");
-  var self = this;
-
-  return this._avecSession(async function (session, base) {
-    var j = await self._appel(
-      base + "/eapi/book/" + encodeURIComponent(e.livreId) + "/" + encodeURIComponent(e.hash) + "/file",
-      { method: "GET", headers: self._enTetes(session, base), timeout: 30000 },
-      "download link"
-    );
-
-    var f = j && j.file;
-    if (Number(j.success) !== 1 || !f) {
-      throw new Error("Z-Library: " + ((j && j.message) || "download link rejected."));
+Zlibrary.getDiscoverSections = async function () {
+  var connected = false;
+  try { connected = Boolean(await this._sessionSiConnu()); } catch (_) { /* Partial settings must not break discovery inspection. */ }
+  return this.SECTIONS.filter(function (section) { return connected || !section.compte; })
+    .map(function (section) { return { id: section.id, title: section.title, icon: section.icon }; });
+};
+Zlibrary.getDiscoverItems = function (sectionId, page) {
+  var section = this.SECTIONS.filter(function (item) { return item.id === sectionId; })[0];
+  var p = page && page > 1 ? page : 1, self = this;
+  if (!section || !section.pagine && p > 1) return Promise.resolve([]);
+  return this._run(13500, null, async function (context) {
+    if (!section.compte) {
+      var session = await self._sessionSiConnu();
+      try { return await self._livres(section.chemin, section.title, session, context); }
+      catch (err) { if (!session || !err || err.kind !== "auth") throw err; return self._livres(section.chemin, section.title, null, context); }
     }
+    return self._avecSession(function (session) {
+      return self._livres(section.chemin + "?page=" + p + "&limit=" + self.LIMITE, section.title, session, context);
+    }, context);
+  });
+};
 
-    // LE PIEGE QUI COMPTE, et qu'on ne devine pas : quota epuise, l'API repond
-    // `success: 1` AVEC la fiche du livre mais SANS lien, et `allowDownload: false`.
-    // Un code qui ne testerait que `success` conclurait a une reussite et rendrait une
-    // URL vide.
-    if (!f.downloadLink) {
-      if (f.allowDownload === false) {
-        throw new Error("Your daily Z-Library download limit has been reached. Try again after it resets.");
-      }
-      throw new Error("Z-Library did not return a download link for this book.");
-    }
-
-    var ext = String(f.extension || item.format || "epub").toLowerCase();
-    var nom = String(item.title || "book").replace(/[\\/:*?"<>|]+/g, " ").trim();
-
-    cinder.log("[zlibrary] resolved link for \"" + nom + "\" (" + ext + ")");
-
-    // Le lien est authentifie par cookie : les en-tetes DOIVENT accompagner l'URL, sinon
-    // Cinder telecharge une page de connexion a la place du fichier.
-    return {
-      url: f.downloadLink,
-      fileName: nom + "." + ext,
-      headers: self._enTetes(session, base),
-    };
+Zlibrary.resolve = function (item) {
+  var e = item && item.extra || {}, self = this;
+  if (!e.livreId || !e.hash) return Promise.reject(new Error("This result does not include a book identifier."));
+  return this._run(60000, null, function (context) {
+    return self._avecSession(async function (session) {
+      var reply = await self._api("/eapi/book/" + encodeURIComponent(e.livreId) + "/" + encodeURIComponent(e.hash) + "/file",
+        { method: "GET", headers: self._headers(session) }, "download link", context);
+      var file = reply.data.file, link = file.downloadLink || file.downloadUrl;
+      if (!link) throw self._error("api", "Z-Library did not return a download link for this book.");
+      link = String(link);
+      if (link.indexOf("//") === 0) link = "https:" + link;
+      else if (link.charAt(0) === "/") link = reply.base + link;
+      var url = link.match(/^https:\/\/([^/?#]+)(?:[/?#]|$)/i);
+      var origin = url && self._normalizeBase(url[1]);
+      if (!origin || /[\x00-\x20\x7f]/.test(link)) throw self._error("api", "Z-Library returned an invalid download link.");
+      var ext = String(file.extension || item.format || "epub").toLowerCase();
+      if (!/^[a-z0-9]{2,8}$/.test(ext)) throw self._error("api", "Z-Library returned an invalid file format.");
+      var name = String(item.title || "book").replace(/[\x00-\x1f\\/:*?"<>|]+/g, " ").trim() || "book";
+      // Signed third-party links do not need account cookies. Preserve them for
+      // this mirror and its file subdomains, where direct downloads require auth.
+      var baseHost = reply.base.slice(8), fileHost = origin.slice(8);
+      var sameSite = fileHost === baseHost || fileHost.slice(-(baseHost.length + 1)) === "." + baseHost || reply.domains.indexOf(origin) >= 0;
+      var headers = self._enTetes(sameSite ? session : null, reply.base);
+      if (sameSite) headers = await self._withBrowserCookies(origin, headers);
+      self._active(context);
+      return { url: link, fileName: name + "." + ext, headers: headers };
+    }, context);
   });
 };
 
