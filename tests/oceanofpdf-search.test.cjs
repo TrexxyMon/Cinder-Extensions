@@ -82,7 +82,8 @@ for (const status of [200, 403, 503]) {
     assert.equal(h.browserCalls.length, 1);
     const headers = h.browserCalls[0].options.headers;
     assert.equal(headers['X-Cinder-Suppress-Interactive'], '1');
-    assert.ok(Number(headers['X-Cinder-Max-Wait-Ms']) <= 6000);
+    assert.ok(Number(headers['X-Cinder-Max-Wait-Ms']) > 6000);
+    assert.ok(Number(headers['X-Cinder-Max-Wait-Ms']) <= 13500);
     assert.match(h.calls[0].options.headers['User-Agent'], /16_6/);
   });
 }
@@ -207,4 +208,14 @@ test('detail browser waits for download form fields, preserving the POST resolve
   await h.source._fetchPage(primary + '/authors/test/book/');
   assert.match(h.browserCalls[0].options.headers['X-Cinder-Wait-For-Selector'], /input\[name="filename"\]/);
   assert.equal(h.browserCalls[0].options.headers['X-Cinder-Suppress-Interactive'], '1');
+});
+
+test('cancellation during the optional UA probe starts no late request', async t => {
+  const h = harness(t); const controller = new AbortController(); let finish;
+  h.cinder.executeBrowserScript = () => new Promise(resolve => { finish = resolve; });
+  const work = h.source.search('test', 0, undefined, { signal: controller.signal });
+  await new Promise(resolve => setImmediate(resolve));
+  controller.abort(); finish({ result: 'Mozilla/5.0 test browser' });
+  await assert.rejects(work, /cancelled/);
+  assert.equal(h.calls.length, 0); assert.equal(h.browserCalls.length, 0);
 });

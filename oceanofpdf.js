@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "oceanofpdf",
 	name: "OceanofPDF",
-	version: "0.1.8",
+	version: "0.1.9",
 	icon: "OPDF",
 	description: "OceanofPDF download-source extension with separate EPUB/PDF results, OceanofPDF-first search, optional ReadRobe fallback, and POST form downloads.",
 	contentType: "books",
@@ -22,6 +22,9 @@ __cinderExport = {
 	_BASE_URLS: ["https://oceanofpdf.com", "https://readrobe.com"],
 	_SEARCH_BUDGET_MS: 14000,
 	_searchBrowserTask: null,
+	_browserUserAgent: "",
+	_browserUserAgentTask: null,
+	_LEGACY_USER_AGENT: "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
 
 	getSettings: function() {
 		return [{
@@ -98,8 +101,8 @@ __cinderExport = {
 				headers: {
 					"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 					"Accept-Language": "en-US,en;q=0.8",
-					// Match the iOS verification browser; Android also has the native browser fallback.
-					"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+					// Keep native requests consistent with the verification browser.
+					"User-Agent": this._browserUserAgent || this._LEGACY_USER_AGENT,
 				},
 				timeout: context ? Math.min(3500, Math.max(1, context.deadline - Date.now())) : 30000,
 				signal: context && context.signal,
@@ -125,7 +128,7 @@ __cinderExport = {
 				"X-Cinder-Wait-For-Selector": context
 					? "article.entry, article.post-item, .no-results, .search-no-results"
 					: 'form[action*="Fetching_Resource.php"] input[name="filename"], form[action*="fetching-ebook-php"] input[name="filename"]',
-				"X-Cinder-Max-Wait-Ms": String(context ? Math.min(6000, remaining) : 45000),
+				"X-Cinder-Max-Wait-Ms": String(context ? Math.max(1000, remaining - 500) : 45000),
 			},
 			timeout: context ? remaining : 60000,
 		});
@@ -307,6 +310,9 @@ __cinderExport = {
 		var self = this;
 		var context = { deadline: Date.now() + this._SEARCH_BUDGET_MS, expired: false, signal: options && options.signal };
 		var work = async function() {
+			self._assertSearchActive(context);
+			await self._getBrowserUserAgent(self._BASE_URL);
+			self._assertSearchActive(context);
 			page = page || 0;
 			var bases = self._BASE_URLS || [self._BASE_URL];
 			var failure;
@@ -423,6 +429,62 @@ __cinderExport = {
 	},
 
 
+
+	_getBrowserUserAgent: async function(pageUrl) {
+		if (this._browserUserAgent) return this._browserUserAgent;
+		if (typeof cinder.executeBrowserScript !== "function") return this._LEGACY_USER_AGENT;
+		var self = this;
+		if (!this._browserUserAgentTask) {
+			// Ask the same default WebView used for verification. This loads only
+			// trusted blank HTML: no remote scripts, images, cookies in JS, or UI.
+			var task = Promise.resolve().then(function() {
+				return cinder.executeBrowserScript({
+					source: { html: "<!doctype html><html><body></body></html>", baseUrl: pageUrl,
+						loadCSS: false, loadImages: false },
+					inject: "String(navigator.userAgent || '')",
+					storage: { cookies: [] },
+				});
+			}).then(function(result) {
+				var ua = result && result.result;
+				if (typeof ua === "string" && ua.length >= 10 && ua.length <= 1024 && !/[\x00-\x1f\x7f]/.test(ua)) {
+					self._browserUserAgent = ua;
+				}
+				return self._browserUserAgent || self._LEGACY_USER_AGENT;
+			}, function() { return self._LEGACY_USER_AGENT; });
+			this._browserUserAgentTask = task;
+			task.then(function() { if (self._browserUserAgentTask === task) self._browserUserAgentTask = null; });
+		}
+		// A busy browser queue must not stall a download just to identify its UA.
+		// A late successful probe remains useful; overlapping calls share it.
+		return Promise.race([this._browserUserAgentTask, new Promise(function(resolve) {
+			setTimeout(function() { resolve(self._browserUserAgent || self._LEGACY_USER_AGENT); }, 1500);
+		})]);
+	},
+
+	_clearanceCookie: function(headers) {
+		var value = this._responseHeader(headers, "cookie");
+		if (!value || value.length > 65536 || /[\x00-\x1f\x7f]/.test(value)) return "";
+		var matches = value.split(";").map(function(part) { return part.trim(); }).filter(function(part) {
+			return part.indexOf("cf_clearance=") === 0;
+		});
+		if (matches.length !== 1 || !matches[0].slice(13) || /[,\s]/.test(matches[0])) return "";
+		return matches[0];
+	},
+
+	_fileHeaders: async function(url, pageUrl, endpoint, userAgent) {
+		var headers = { Referer: endpoint, "User-Agent": userAgent };
+		// Live file servers require the parent-zone clearance as well as the
+		// same UA. Scope this exception narrowly; never forward arbitrary site
+		// credentials to a redirect host, even if its filename matches.
+		if (!/^https:\/\/fs[0-9]+\.oceanofpdf\.com\//i.test(url) || typeof cinder.getBrowserSessionHeaders !== "function") return headers;
+		try {
+			var cookie = this._clearanceCookie(await cinder.getBrowserSessionHeaders(pageUrl));
+			if (!cookie) cookie = this._clearanceCookie(await cinder.getBrowserSessionHeaders(url));
+			if (cookie) headers.Cookie = cookie;
+		} catch (_) { /* Older hosts can still use their shared browser cookie jar. */ }
+		return headers;
+	},
+
 	_formBody: function(selected) {
 		var fields = selected.fields || { id: selected.requestId, filename: selected.fileName };
 		return Object.keys(fields).filter(function(key) {
@@ -445,8 +507,8 @@ __cinderExport = {
 				url = typeof cinder.resolveUrl === "function" ? cinder.resolveUrl(value, selected.endpoint) : self._absUrl(value, self._baseForUrl(selected.endpoint));
 			} catch (_) { return null; }
 			// Signed file hosts differ from the website. Accept only an explicit
-			// HTTPS link for the requested filename; never carry website cookies
-			// or authorization over to that separate origin.
+			// HTTPS link for the requested filename. _fileHeaders scopes the
+			// clearance exception to the provider's known file servers only.
 			if (!/^https:\/\/[^\s/@?#]+(?:\/|$)/i.test(url)) return null;
 			var path = url.replace(/^https:\/\/[^/]+/i, "").split(/[?#]/)[0];
 			var name = path.slice(path.lastIndexOf("/") + 1);
@@ -482,24 +544,27 @@ __cinderExport = {
 			!/^https:\/\/oceanofpdf\.com\/Fetching_Resource\.php(?:[?#]|$)/i.test(selected.endpoint)) {
 			throw this._error("OceanofPDF returned an unexpected download form.");
 		}
+		await this._getBrowserUserAgent(pageUrl);
 		var headers = {
 			"Content-Type": "application/x-www-form-urlencoded",
 			"Accept": "text/html,application/xhtml+xml",
 			"Referer": pageUrl,
 			"Origin": this._baseForUrl(pageUrl),
-			"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+			"User-Agent": this._browserUserAgent || this._LEGACY_USER_AGENT,
 		};
 		// cinder.fetch supplies this extension's stored website cookies. Read
 		// the small response here instead of handing an HTML form endpoint to
 		// a binary WebView and waiting for it to guess the final file URL.
 		for (var attempt = 0; attempt < 2; attempt++) {
+			headers["User-Agent"] = this._browserUserAgent || this._LEGACY_USER_AGENT;
 			var response = await cinder.fetch(selected.endpoint, {
 				method: "POST", headers: headers, body: this._formBody(selected), timeout: 15000,
 			});
 			var redirect = this._fileRedirect(response, selected);
 			if (redirect) {
 				if (redirect.delay) await new Promise(function(resolve) { setTimeout(resolve, redirect.delay * 1000); });
-				return { url: redirect.url, fileName: selected.fileName, headers: { Referer: selected.endpoint } };
+				return { url: redirect.url, fileName: selected.fileName,
+					headers: await this._fileHeaders(redirect.url, pageUrl, selected.endpoint, headers["User-Agent"]) };
 			}
 			var challenged = response && (response.status === 403 || this._isChallenge(response.data));
 			if (!challenged) {
@@ -536,6 +601,7 @@ __cinderExport = {
 			String(item.format || item.extra?.preferredFormat || "epub").toLowerCase();
 		if (!item?.url) throw new Error("OceanofPDF item is missing a source page URL.");
 
+		await this._getBrowserUserAgent(item.url);
 		var resp = await this._fetchPage(item.url);
 		if (!this._isUsableHtml(resp)) {
 			throw this._pageError(resp);

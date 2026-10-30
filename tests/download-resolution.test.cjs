@@ -168,7 +168,7 @@ test("OceanOfPDF preserves saved item metadata while resolving the original-site
 	source._extractDownloadForms = () => [original];
 	const item = Object.freeze({ id: "saved#epub", title: "Title", cover: "cover.jpg", url: "https://oceanofpdf.com/book/", format: "epub" });
 	assert.deepEqual(plain(await source.resolve(item)), {
-		url: direct, fileName: filename, headers: { Referer: original.endpoint },
+		url: direct, fileName: filename, headers: { Referer: original.endpoint, "User-Agent": source._LEGACY_USER_AGENT },
 	});
 	assert.equal(item.cover, "cover.jpg");
 	await assert.rejects(source.resolve({ ...item, format: "pdf" }), /form was not found/);

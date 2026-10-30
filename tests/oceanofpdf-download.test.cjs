@@ -60,7 +60,7 @@ test('original-site resolver posts form and returns signed file URL, not binary 
   h.source._fetchPage = async () => ok(formHtml());
   const item = Object.freeze({ id: 'saved#epub', title: 'Saved title', cover: 'cover.jpg', url: page, format: 'epub' });
   const result = await h.source.resolve(item);
-  assert.deepEqual(plain(result), { url: target, fileName: filename, headers: { Referer: endpoint } });
+  assert.deepEqual(plain(result), { url: target, fileName: filename, headers: { Referer: endpoint, "User-Agent": h.source._LEGACY_USER_AGENT } });
   assert.equal(h.calls.length, 1);
   assert.equal(h.calls[0].url, endpoint);
   assert.equal(h.calls[0].options.method, 'POST');
@@ -133,7 +133,7 @@ for (const response of [null, { data: meta() }, { status: 'invalid', data: meta(
 test('website credentials and signed links never appear in returned headers or routine logs', async () => {
   const h = harness({ fetch: async () => ({ ...ok(meta()), headers: { 'set-cookie': 'cf_clearance=private', Authorization: 'private' } }) });
   const result = await h.source._resolveOceanForm(selected, page);
-  assert.deepEqual(plain(result.headers), { Referer: endpoint });
+  assert.deepEqual(plain(result.headers), { Referer: endpoint, "User-Agent": h.source._LEGACY_USER_AGENT });
   assert.equal(h.warnings.length, 0);
 });
 
@@ -200,4 +200,105 @@ test('unexpected form endpoint is rejected before sending any fields', async () 
   const h = harness();
   await assert.rejects(h.source._resolveOceanForm({ ...selected, endpoint: 'https://other.example/Fetching_Resource.php' }, page), /unexpected download form/);
   assert.equal(h.calls.length, 0);
+});
+
+test('actual browser UA reaches the detail GET, form POST, and final file GET headers', async () => {
+  const ua = 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36';
+  const h = harness({ fetch: async url => url === page ? ok(formHtml()) : ok(meta()) });
+  let probes = 0;
+  h.cinder.executeBrowserScript = async context => {
+    probes++;
+    assert.equal(context.source.userAgent, undefined);
+    assert.equal(context.source.loadCSS, false); assert.equal(context.source.loadImages, false);
+    assert.deepEqual(plain(context.storage), { cookies: [] });
+    assert.equal(context.inject, "String(navigator.userAgent || '')");
+    return { result: ua };
+  };
+  // Use real microtasks for the probe; don't expire its safety timer immediately.
+  const result = await h.source.resolve({ url: page, format: 'epub' });
+  assert.equal(result.headers['User-Agent'], ua);
+  assert.ok(h.calls.every(c => c.options.headers['User-Agent'] === ua));
+  assert.equal(probes, 1);
+  await h.source.resolve({ url: page, format: 'epub' });
+  assert.equal(probes, 1);
+});
+
+test('legacy host without UA probe keeps the established iOS identity on final download', async () => {
+  const h = harness();
+  const r = await h.source._resolveOceanForm(selected, page);
+  assert.equal(r.headers['User-Agent'], h.source._LEGACY_USER_AGENT);
+});
+
+for(const ua of [undefined, {}, '', 'x', 'Mozilla/5.0\r\nInjected: bad', 'x'.repeat(1025)]) {
+  test('invalid browser identity is never put in a request header: ' + typeof ua + '/' + String(ua).length, async () => {
+    const h = harness(); h.cinder.executeBrowserScript = async () => ({ result: ua });
+    assert.equal(await h.source._getBrowserUserAgent(page), h.source._LEGACY_USER_AGENT);
+    assert.equal(h.source._browserUserAgent, '');
+  });
+}
+
+test('failed UA probe is optional and may be retried later', async () => {
+  const h = harness(); let count = 0;
+  h.cinder.executeBrowserScript = async () => { count++; throw Error('unavailable'); };
+  assert.equal(await h.source._getBrowserUserAgent(page), h.source._LEGACY_USER_AGENT);
+  await new Promise(resolve => setImmediate(resolve));
+  await h.source._getBrowserUserAgent(page);
+  assert.equal(count, 2);
+});
+
+test('overlapping UA probes coalesce and late results update the next request without new network work', async () => {
+  const h = harness(); let count = 0, finish;
+  h.cinder.executeBrowserScript = () => { count++; return new Promise(r => { finish = r; }); };
+  const results = await Promise.all([h.source._getBrowserUserAgent(page), h.source._getBrowserUserAgent(page)]);
+  assert.ok(results.every(ua => ua === h.source._LEGACY_USER_AGENT));
+  assert.equal(count, 1);
+  finish({ result: 'Mozilla/5.0 Chromium test browser' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(await h.source._getBrowserUserAgent(page), 'Mozilla/5.0 Chromium test browser');
+  assert.equal(h.calls.length, 0); assert.equal(h.browserCalls.length, 0);
+});
+
+test('only parent-zone clearance reaches an exact Ocean file host, with fresh page snapshot preferred', async () => {
+  const h = harness(), lookups = [];
+  const url = target.replace('files.example', 'fs3.oceanofpdf.com');
+  h.cinder.getBrowserSessionHeaders = async key => { lookups.push(key); return key === page
+    ? { Cookie: 'wordpress_login=private; cf_clearance=fresh; _ga=analytics', Authorization: 'private' }
+    : { Cookie: 'cf_clearance=stale' }; };
+  assert.deepEqual(plain(await h.source._fileHeaders(url, page, endpoint, 'Test Browser UA')), {
+    Referer: endpoint, 'User-Agent': 'Test Browser UA', Cookie: 'cf_clearance=fresh',
+  });
+  assert.deepEqual(lookups, [page]);
+});
+
+test('a captured exact file-origin session can supply clearance when parent session has none', async () => {
+  const h = harness(), url = target.replace('files.example', 'fs5.oceanofpdf.com');
+  h.cinder.getBrowserSessionHeaders = async key => key === url ? { cookie: 'cf_clearance=file-session; tracking=x' } : {};
+  assert.equal((await h.source._fileHeaders(url, page, endpoint, 'Test UA')).Cookie, 'cf_clearance=file-session');
+});
+
+for(const host of ['files.example', 'oceanofpdf.com.evil.example', 'fs3.oceanofpdf.com.evil.example',
+  'fs3.oceanofpdf.com:8443', 'fs3.oceanofpdf.com@evil.example', 'evil.example@fs3.oceanofpdf.com',
+  'not-a-file-host.oceanofpdf.com', 'fs3.oceanofpdf.com.']) {
+  test('never shares clearance with unapproved redirect host ' + host, async () => {
+    const h = harness(); h.cinder.getBrowserSessionHeaders = async () => { throw Error('Must not look up cookies'); };
+    assert.equal((await h.source._fileHeaders(target.replace('files.example', host), page, endpoint, 'Test UA')).Cookie, undefined);
+  });
+}
+
+test('HTTP file links never receive clearance', async () => {
+  const h = harness(); h.cinder.getBrowserSessionHeaders = async () => ({ Cookie: 'cf_clearance=secret' });
+  assert.equal((await h.source._fileHeaders('http://fs3.oceanofpdf.com/a.epub', page, endpoint, 'Test UA')).Cookie, undefined);
+});
+
+for(const cookie of ['', 'other=x', 'cf_clearance=', 'cf_clearance=one; cf_clearance=two',
+  'cf_clearance=secret\r\nInjected: value', 'cf_clearance=contains space', 'cf_clearance=one,cf_clearance=two', 'x'.repeat(65537)]) {
+  test('rejects malformed or ambiguous clearance header of length ' + cookie.length, () => {
+    assert.equal(harness().source._clearanceCookie({ Cookie: cookie }), '');
+  });
+}
+
+test('missing session API remains backward compatible without exposing other credentials', async () => {
+  const h = harness();
+  const headers = await h.source._fileHeaders(target.replace('files.example', 'fs3.oceanofpdf.com'), page, endpoint, 'Test UA');
+  assert.deepEqual(plain(headers), { Referer: endpoint, 'User-Agent': 'Test UA' });
 });
