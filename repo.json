@@ -430,7 +430,7 @@
                            "language":  "Multilingual",
                            "icon":  "book-outline",
                            "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/zlibrary.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@bb9a175cf224c3ae1eda23007e663275ad765725/zlibrary.js",
                            "minCinderVersion":  "1.0.0",
                            "contentTypes":  [
                                                 "ebook"
