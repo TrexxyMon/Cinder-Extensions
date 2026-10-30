@@ -28,7 +28,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **LibGen** | Books | Direct download-source extension with on-device link resolution. |
 | **Mayberry** | Books | Search and download books from the federated Mayberry library network, with covers, metadata, and New Releases, New Arrivals, and Top Reads discovery shelves. |
 | **ElScione Server** | Web & Light Novels/Manga | Search an h5ai ebook and manga server for EPUB, PDF, CBZ, and CBR files. |
-| **OceanofPDF** | Books | Download-source extension with separate EPUB/PDF results and POST form downloads. |
+| **OceanofPDF** | Books | OceanofPDF-first search with EPUB/PDF results, website verification, POST form downloads, and ReadRobe as a fallback only. |
 | **Royal Road** | Webnovels | Search chaptered fiction from Royal Road and package it into EPUB for reading in Cinder. |
 | **ReadNovelEU** | Web & Light Novels | Search and read chaptered web novels from the current WuxiaWorld destination. |
 | **NovelBin** | Web & Light Novels | Search public chaptered web novels and build EPUBs on device. No debrid required. |

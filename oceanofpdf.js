@@ -1,12 +1,13 @@
 __cinderExport = {
 	id: "oceanofpdf",
 	name: "OceanofPDF",
-	version: "0.1.6",
+	version: "0.1.7",
 	icon: "OPDF",
-	description: "OceanofPDF download-source extension with separate EPUB/PDF results, a ReadRobe mirror fallback, and POST form downloads.",
+	description: "OceanofPDF download-source extension with separate EPUB/PDF results, OceanofPDF-first search, optional ReadRobe fallback, and POST form downloads.",
 	contentType: "books",
 	contentTypes: ["ebook"],
 	excludeFromDefaultMetadataProviders: true,
+	browser: { startUrl: "https://oceanofpdf.com/?s=test", userAgent: "mobile" },
 
 	capabilities: {
 		search: true,
@@ -18,7 +19,49 @@ __cinderExport = {
 	},
 
 	_BASE_URL: "https://oceanofpdf.com",
-	_BASE_URLS: ["https://readrobe.com", "https://oceanofpdf.com"],
+	_BASE_URLS: ["https://oceanofpdf.com", "https://readrobe.com"],
+	_SEARCH_BUDGET_MS: 14000,
+	_searchBrowserTask: null,
+
+	getSettings: function() {
+		return [{
+			id: "verify_website", label: "Verify Website", type: "webview",
+			url: "https://oceanofpdf.com/?s=test",
+			subtitle: "Complete the browser check, then return and retry search.",
+		}];
+	},
+
+	_error: function(message, status) {
+		var error = new Error(message);
+		error.status = status || 0;
+		error.stopSearch = true;
+		return error;
+	},
+
+	_isChallenge: function(html) {
+		return /<title[^>]*>\s*(?:Just a moment[^<]*|Attention Required[^<]*)<\/title>/i.test(String(html || "")) ||
+			/enable javascript and cookies|id=["']cf-challenge|window\._cf_chl_opt\s*=/i.test(String(html || ""));
+	},
+
+	_isMaintenance: function(html) {
+		// Match the page heading, not a book mentioning an outage in its title/summary.
+		return /<title[^>]*>[^<]*(?:temporarily offline|under maintenance|service unavailable)[^<]*<\/title>/i.test(String(html || ""));
+	},
+
+	_pageError: function(resp) {
+		if (Number(resp && resp.status) === 403 || this._isChallenge(resp && resp.data)) {
+			return this._error("OceanofPDF requires a browser check. Open extension settings > Verify Website, complete the check, then retry.", 403);
+		}
+		return this._error("OceanofPDF search is temporarily unavailable. Please retry later.", Number(resp && resp.status));
+	},
+
+	_assertSearchActive: function(context) {
+		if (!context) return;
+		if (context.signal && context.signal.aborted) throw this._error("OceanofPDF search cancelled.");
+		if (context.expired || Date.now() >= context.deadline) {
+			throw this._error("OceanofPDF search timed out. Open extension settings > Verify Website if a browser check is required.");
+		}
+	},
 
 	_absUrl: function(url, baseUrl) {
 		if (!url) return "";
@@ -47,41 +90,66 @@ __cinderExport = {
 			.replace(/^-+|-+$/g, "");
 	},
 
-	_fetchPage: async function(url) {
+	_fetchPage: async function(url, context) {
+		this._assertSearchActive(context);
+		var resp = { status: 0, data: "" };
 		try {
-			var resp = await cinder.fetch(url, {
+			resp = await cinder.fetch(url, {
 				headers: {
 					"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 					"Accept-Language": "en-US,en;q=0.8",
-					"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+					// Match the iOS verification browser; Android also has the native browser fallback.
+					"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
 				},
-				timeout: 30000,
+				timeout: context ? Math.min(3500, Math.max(1, context.deadline - Date.now())) : 30000,
+				signal: context && context.signal,
 			});
-			if (this._isUsableHtml(resp)) return resp;
-			cinder.log("[OceanofPDF] Fetch returned challenge/unusable HTML, using browser fetch.");
-		} catch (err) {
-			cinder.warn("[OceanofPDF] Fetch failed, using browser fetch: " + err);
+		} catch (_) {
+			// Network errors can still succeed through the existing browser session.
 		}
-
-		return await cinder.fetchBrowser(url, {
+		this._assertSearchActive(context);
+		if (this._isUsableHtml(resp)) return resp;
+		// Do not spend another browser timeout on an offline mirror or real HTTP
+		// error. Some browser challenges use 503, so recognize those separately.
+		if (this._isMaintenance(resp && resp.data) ||
+			(resp && resp.status >= 400 && resp.status !== 403 && !this._isChallenge(resp.data))) return resp;
+		if (typeof cinder.fetchBrowser !== "function") return resp;
+		if (context && this._searchBrowserTask) throw this._error("OceanofPDF browser check is already running. Please retry shortly.");
+		var remaining = context ? context.deadline - Date.now() : 45000;
+		if (remaining < 1000) { context.expired = true; this._assertSearchActive(context); }
+		var task = cinder.fetchBrowser(url, {
 			headers: {
 				"X-Cinder-Suppress-Interactive": "1",
-				"X-Cinder-Wait-For-Selector": "article.entry, article.post-item",
-				"X-Cinder-Max-Wait-Ms": "45000",
+				"X-Cinder-Min-Wait-Ms": "500",
+				"X-Cinder-Wait-For-Selector": context
+					? "article.entry, article.post-item, .no-results, .search-no-results"
+					: 'form[action*="Fetching_Resource.php"] input[name="filename"], form[action*="fetching-ebook-php"] input[name="filename"]',
+				"X-Cinder-Max-Wait-Ms": String(context ? Math.min(6000, remaining) : 45000),
 			},
-			timeout: 60000,
+			timeout: context ? remaining : 60000,
 		});
+		if (context) this._searchBrowserTask = task;
+		try {
+			var browserResp = await task;
+			this._assertSearchActive(context);
+			if (this._isUsableHtml(browserResp)) return browserResp;
+			// A browser timeout can appear as either status 0 or empty HTTP 200.
+			// Preserve the primary challenge instead of reporting false success.
+			if (resp && (resp.status === 403 || this._isChallenge(resp.data))) return resp;
+			return browserResp && browserResp.status ? browserResp : resp;
+		} catch (err) {
+			this._assertSearchActive(context);
+			if (resp && (resp.status === 403 || this._isChallenge(resp.data))) return resp;
+			throw err;
+		} finally {
+			if (this._searchBrowserTask === task) this._searchBrowserTask = null;
+		}
 	},
 
 	_isUsableHtml: function(resp) {
-		if (!resp || resp.status < 200 || resp.status >= 400) return false;
-		var data = resp.data || "";
-		if (data.length < 1000) return false;
-		var lower = data.toLowerCase();
-		if (lower.indexOf("cf-challenge") !== -1) return false;
-		if (lower.indexOf("enable javascript and cookies") !== -1) return false;
-		if (lower.indexOf("just a moment") !== -1 && lower.indexOf("cloudflare") !== -1) return false;
-		return true;
+		if (!resp || !(Number(resp.status) >= 200 && Number(resp.status) < 400)) return false;
+		var data = typeof resp.data === "string" ? resp.data : "";
+		return data.length >= 1000 && !this._isChallenge(data) && !this._isMaintenance(data);
 	},
 
 	_extractMetaValue: function(text, label) {
@@ -222,25 +290,52 @@ __cinderExport = {
 		return results;
 	},
 
-	search: async function(query, page) {
-		page = page || 0;
-		var bases = this._BASE_URLS || [this._BASE_URL];
-		for (var i = 0; i < bases.length; i++) {
-			var baseUrl = bases[i];
-			var url = page > 0
-				? baseUrl + "/page/" + (page + 1) + "/?s=" + encodeURIComponent(query)
-				: baseUrl + "/?s=" + encodeURIComponent(query);
-			cinder.log("[OceanofPDF] Search: " + url);
-			try {
-				var resp = await this._fetchPage(url);
-				if (!this._isUsableHtml(resp)) continue;
-				var results = this._parseResultArticles(resp.data, baseUrl).slice(0, 50);
-				if (results.length) return results;
-			} catch (err) {
-				cinder.warn("[OceanofPDF] Search host failed: " + baseUrl + " (" + err + ")");
+	search: function(query, page, selections, options) {
+		var self = this;
+		var context = { deadline: Date.now() + this._SEARCH_BUDGET_MS, expired: false, signal: options && options.signal };
+		var work = async function() {
+			page = page || 0;
+			var bases = self._BASE_URLS || [self._BASE_URL];
+			var failure;
+			for (var i = 0; i < bases.length; i++) {
+				self._assertSearchActive(context);
+				var baseUrl = bases[i];
+				var url = page > 0
+					? baseUrl + "/page/" + (page + 1) + "/?s=" + encodeURIComponent(query)
+					: baseUrl + "/?s=" + encodeURIComponent(query);
+				try {
+					var resp = await self._fetchPage(url, context);
+					self._assertSearchActive(context);
+					if (!self._isUsableHtml(resp)) throw self._pageError(resp);
+					var results = self._parseResultArticles(resp.data, baseUrl).slice(0, 50);
+					if (results.length) return results;
+					// A genuine empty search is successful; do not substitute a
+					// different site's catalogue, or treat an error page as empty.
+					if (/<title[^>]*>[^<]*(?:Search Results|You searched for)/i.test(resp.data) &&
+					/<(?:main|div)\b[^>]*id=["'](?:genesis-content|main)["']/i.test(resp.data)) return [];
+					throw self._pageError(resp);
+				} catch (err) {
+					self._assertSearchActive(context);
+					// Prefer actionable verification instructions to the offline
+					// fallback's generic error. Never log query text or cookies.
+					if (!failure || err.status === 403) failure = err;
+				}
 			}
-		}
-		return [];
+			throw failure || self._pageError(null);
+		};
+		return new Promise(function(resolve, reject) {
+			var settled = false;
+			// Older sandboxes expose setTimeout but not clearTimeout. Bound the
+			// entire search below Cinder's 15-second search/Test Connection limit.
+			setTimeout(function() {
+				if (settled) return;
+				settled = true;
+				context.expired = true;
+				reject(self._error("OceanofPDF search timed out. Open extension settings > Verify Website if a browser check is required."));
+			}, self._SEARCH_BUDGET_MS);
+			work().then(function(result) { if (!settled) { settled = true; resolve(result); } },
+				function(error) { if (!settled) { settled = true; reject(error); } });
+		});
 	},
 
 	_responseHeader: function(headers, name) {
@@ -321,7 +416,7 @@ __cinderExport = {
 
 		var resp = await this._fetchPage(item.url);
 		if (!this._isUsableHtml(resp)) {
-			throw new Error("OceanofPDF detail page could not be loaded.");
+			throw this._pageError(resp);
 		}
 
 		var forms = this._extractDownloadForms(resp.data || "", item.url);
