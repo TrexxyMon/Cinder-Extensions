@@ -440,11 +440,11 @@
                        {
                            "id":  "oceanofpdf",
                            "name":  "OceanofPDF",
-                           "version":  "0.1.9",
+                           "version":  "0.1.10",
                            "description":  "Download-source extension for OceanofPDF with separate EPUB/PDF results, OceanofPDF-first search, optional ReadRobe fallback, and POST form downloads.",
                            "language":  "English",
                            "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@ac21ed5c045fd355dd08ba304f93f9755a67ce79/oceanofpdf.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@e72258bcf62e54e31bc8992bf7a386c376c2d047/oceanofpdf.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "ebook"
