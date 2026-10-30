@@ -73,14 +73,17 @@ outage or guarantee successful downloads while the host is disabled.
 
 ### Z-Library connection and fallback settings
 
-Version 1.3.0 keeps existing saved domains, language preferences, credentials,
+Version 1.3.1 keeps existing saved domains, language preferences, credentials,
 book IDs, and discovery sections. Search can still run without an account;
 downloads require your account or session keys.
 
-- **Automatic Mirror Fallback** is on by default. It tries another API mirror
-  when a host is unreachable, challenged, or returns unusable data, and remembers
-  the working mirror separately from your selected domain. Turn it off to use
-  only the selected domain.
+- **Z-Library Domain** offers **Auto (recommended)**, known mirrors, cached
+  mirrors from the maintained list, and **Custom**. Auto needs no typed domain.
+  Existing saved domain values remain selected; choose Auto to switch. Custom
+  domains remain available through the optional Custom Domain field.
+- **Automatic Mirror Fallback** applies when a specific mirror is selected.
+  Auto always tries alternatives and remembers a working API mirror. Turning
+  fallback off for a specific domain restricts requests to that domain.
 - The maintained mirror list refreshes in the background at most weekly after
   a successful refresh. A failed refresh retains the cached list; searches do not
   wait for that refresh. Requests share a bounded deadline rather than stacking
@@ -89,7 +92,11 @@ downloads require your account or session keys.
   Existing language preferences still apply.
 - **Remix User ID / Remix User Key** optionally replace password sign-in. Supply
   both or leave both blank. Passwords and session secrets use Cinder's secure
-  storage. Rejected account credentials and download limits stop retries.
+  storage. With email/password, a refused API login gets one attempt through
+  the website's login form on the same mirror. Its different session response is
+  supported. HTTP 400 "Please login" refreshes a saved session once instead of
+  failing as a generic HTTP error. Login rate limits and download quotas stop
+  retries; credentials never enter request URLs or routine extension logs.
 - After a search or sign-in browser challenge, fast API mirrors are tried
   first. If none succeeds, one bounded, silent public-homepage load can complete
   a noninteractive browser check. The original POST is then retried once with

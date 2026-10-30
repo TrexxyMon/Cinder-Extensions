@@ -178,10 +178,12 @@ test('rejected manual keys are actionable and never cause password login or mirr
   const h = harness(t, { values: { remix_userid: '42' }, secrets: { remix_userkey: 'expired' }, fetch: async () => json({ error: 'authentication required' }, 401) });
   await assert.rejects(h.source.resolve(item), /Update or clear/); assert.equal(h.apiCalls().length, 1);
 });
-test('invalid credentials stop login at first definitive API failure', async t => {
+test('invalid credentials stop after the two distinct login protocols, without mirror cycling', async t => {
   const h = harness(t, { values: { email: 'reader@example.test' }, secrets: { motdepasse: 'private-password' }, fetch: async () => json({ success: 0, error: 'wrong password' }) });
   await assert.rejects(h.source.resolve(item), /rejected the sign-in/);
-  assert.equal(h.apiCalls().length, 1); assert.equal(h.secureWrites.length, 0);
+  assert.equal(h.apiCalls().length, 2); assert.equal(h.secureWrites.length, 0);
+  assert.ok(h.apiCalls().every(call => call.url.startsWith(primary)));
+  assert.ok(h.apiCalls()[1].url.endsWith('/rpc.php'));
   assert.ok(!JSON.stringify(h.writes).includes('private-password'));
 });
 test('parallel downloads share one login', async t => {
@@ -437,4 +439,137 @@ test('network-only failures and ordinary empty results do not start browser veri
     else assert.deepEqual(plain(await h.source.search('Example', 1)), []);
     assert.equal(h.browserCalls.length, 0);
   }
+});
+
+test('domain selector offers Auto and known mirrors without typing, and preserves saved custom origins', async t => {
+  const h = harness(t, { values: { domaine: 'https://saved.example.test/eapi', mirror_cache_v1: JSON.stringify({ at: Date.now(), domains: ['https://cached.example.test', 'http://invalid.example.test', 'https://cached.example.test'] }) } });
+  const settings = await h.source.getSettingsAsync();
+  const domain = settings.find(setting => setting.id === 'domaine');
+  assert.equal(domain.type, 'select'); assert.equal(domain.defaultValue, '');
+  assert.ok(domain.options.some(option => option.label === 'Auto (recommended)' && option.value === ''));
+  assert.ok(domain.options.some(option => option.value === 'backup.example.test'));
+  assert.ok(domain.options.some(option => option.value === 'https://saved.example.test/eapi'));
+  assert.equal(domain.options.filter(option => option.value === 'cached.example.test').length, 1);
+  assert.ok(!domain.options.some(option => option.value.includes('invalid.example.test')));
+  assert.ok(domain.options.some(option => option.value === 'custom'));
+  assert.equal(h.store.get('domaine'), 'https://saved.example.test/eapi');
+  assert.equal(h.calls.length, 0);
+});
+
+test('Auto selects working mirrors even when the old selected-mirror fallback toggle was off', async t => {
+  const h = harness(t, { values: { domaine: '', automatic_mirrors: 'false' }, fetch: async url => url.startsWith('https://z-library.ec') ? challenge() : good() });
+  assert.equal((await h.source.search('Example', 1)).length, 1);
+  assert.equal(h.apiCalls().length, 2);
+  const remembered = JSON.parse(h.store.get('working_mirror_v1'));
+  assert.equal(remembered.base, primary);
+  const settings = await h.source.getSettingsAsync();
+  assert.equal(settings.find(setting => setting.id === 'verify_website').url, primary);
+});
+
+test('optional custom domain is used only after Custom is selected', async t => {
+  const h = harness(t, { values: { domaine: 'custom', custom_domain: 'https://custom.example.test/eapi', automatic_mirrors: 'false' } });
+  await h.source.search('Example', 1);
+  assert.equal(h.apiCalls()[0].url, 'https://custom.example.test/eapi/book/search');
+  h.store.set('domaine', primary);
+  await h.source.search('Example', 1);
+  assert.equal(h.apiCalls()[1].url, primary + '/eapi/book/search');
+});
+
+test('live-shaped HTTP 400 Please login refreshes an expired session and retries the file once', async t => {
+  const h = harness(t, { values: { email: 'reader@example.test' }, secrets: { motdepasse: 'password', user_id: '12', user_key: 'old-key' }, fetch: async (url, options) => {
+    if (url.endsWith('/login')) return json({ success: 1, user: { id: 12, remix_userkey: 'new-key' } });
+    return options.headers.Cookie.includes('new-key') ? json({ success: 1, file: { downloadLink: primary + '/file.epub' } }) : json({ success: 0, error: 'Please login' }, 400);
+  } });
+  assert.match((await h.source.resolve(item)).headers.Cookie, /new-key/);
+  assert.equal(h.apiCalls().filter(call => call.url.endsWith('/file')).length, 2);
+  assert.equal(h.apiCalls().filter(call => call.url.endsWith('/login')).length, 1);
+  assert.equal(h.apiCalls().filter(call => call.url.endsWith('/rpc.php')).length, 0);
+});
+
+test('expired manual keys on HTTP 400 are actionable without attempting password login', async t => {
+  const h = harness(t, { values: { remix_userid: '42' }, secrets: { remix_userkey: 'expired-key' }, fetch: async () => json({ success: 0, error: 'Please login' }, 400) });
+  await assert.rejects(h.source.resolve(item), /Update or clear/);
+  assert.equal(h.apiCalls().length, 1);
+});
+
+test('ordinary HTTP 400 book errors never trigger a login', async t => {
+  const h = harness(t, { values: { email: 'reader@example.test' }, secrets: { motdepasse: 'password', user_id: '12', user_key: 'key' }, fetch: async () => json({ success: 0, error: 'Invalid book id' }, 400) });
+  await assert.rejects(h.source.resolve(item), /HTTP 400.*download link/);
+  assert.equal(h.apiCalls().length, 1);
+});
+
+test('API login HTTP 400 falls back to the website form and stores its response-shaped session', async t => {
+  const h = harness(t, { values: { email: 'reader@example.test' }, secrets: { motdepasse: ' private & password ' }, fetch: async (url, options) => {
+    if (url.endsWith('/eapi/user/login')) return json({ success: 0, error: 'Authorization failed' }, 400);
+    if (url.endsWith('/rpc.php')) {
+      assert.deepEqual(Object.fromEntries(new URLSearchParams(options.body)), { isModal: 'true', email: 'reader@example.test', password: ' private & password ', site_mode: 'books', action: 'login', gg_json_mode: '1', redirectUrl: primary + '/' });
+      assert.equal(options.method, 'POST'); assert.equal(options.headers.Origin, primary); assert.equal(options.headers.Referer, primary + '/');
+      return json({ errors: [], response: { user_id: 42, user_key: 'website-key' } });
+    }
+    assert.match(options.headers.Cookie, /remix_userid=42; remix_userkey=website-key/);
+    return json({ success: 1, file: { downloadLink: primary + '/file.epub' } });
+  } });
+  assert.match((await h.source.resolve(item)).headers.Cookie, /website-key/);
+  assert.equal(h.secure.get('user_id'), '42'); assert.equal(h.secure.get('user_key'), 'website-key');
+  assert.equal(h.apiCalls().length, 3); assert.equal(h.browserCalls.length, 0);
+  assert.ok(!JSON.stringify(h.writes).includes('private & password'));
+});
+
+test('both rejected login endpoints return a sign-in error rather than HTTP 400 or mirror retries', async t => {
+  const h = harness(t, { values: { email: 'reader@example.test' }, secrets: { motdepasse: 'incorrect-password' }, fetch: async url => url.endsWith('/login')
+    ? json({ success: 0, error: 'Incorrect email or password' }, 400)
+    : json({ errors: [], response: { validationError: true, fields: ['email', 'password'], message: 'Incorrect email or password' } }) });
+  await assert.rejects(h.source.resolve(item), /rejected the sign-in/);
+  assert.equal(h.apiCalls().length, 2); assert.equal(h.secureWrites.length, 0);
+});
+
+for (const [status, data] of [[400, { success: 0, error: 'Too many logins #2. Try again later.' }], [200, { errors: [{ message: 'Too many logins #2. Try again later.' }] }], [429, { error: 'rate limit' }], [403, { error: 'Login limit exceeded' }]]) {
+  test('login rate limits stop before the alternate endpoint on HTTP ' + status, async t => {
+    const h = harness(t, { values: { email: 'reader@example.test' }, secrets: { motdepasse: 'password' }, fetch: async () => json(data, status) });
+    await assert.rejects(h.source.resolve(item), /limiting requests or sign-ins/);
+    assert.equal(h.apiCalls().length, 1); assert.equal(h.secureWrites.length, 0);
+  });
+}
+
+test('website-login rate limit stops without sending another credential request', async t => {
+  const h = harness(t, { values: { email: 'reader@example.test' }, secrets: { motdepasse: 'password' }, fetch: async url => url.endsWith('/login')
+    ? json({ success: 0, error: 'Authorization failed' }, 400)
+    : json({ errors: [{ message: 'Too many logins #2. Try again later.' }] }) });
+  await assert.rejects(h.source.resolve(item), /limiting requests or sign-ins/);
+  assert.equal(h.apiCalls().length, 2); assert.equal(h.secureWrites.length, 0);
+});
+
+test('simultaneous resolves share the alternate login too', async t => {
+  let finish;
+  const h = harness(t, { values: { email: 'reader@example.test' }, secrets: { motdepasse: 'password' }, fetch: async url => {
+    if (url.endsWith('/login')) return json({ success: 0, error: 'Authorization failed' }, 400);
+    if (url.endsWith('/rpc.php')) return new Promise(resolve => { finish = resolve; });
+    return json({ success: 1, file: { downloadLink: primary + '/file.epub' } });
+  } });
+  const first = h.source.resolve(item), second = h.source.resolve(item);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.apiCalls().filter(call => call.url.endsWith('/rpc.php')).length, 1);
+  finish(json({ errors: [], response: { user_id: 42, user_key: 'website-key' } }));
+  assert.equal((await Promise.all([first, second])).length, 2);
+});
+
+test('account changes before alternate login prevent sending the old credentials again', async t => {
+  const h = harness(t, { values: { email: 'reader@example.test' }, secrets: { motdepasse: 'password' } });
+  h.cinder.fetch = async url => { h.calls.push({ url }); h.store.set('email', 'changed@example.test'); return json({ success: 0, error: 'Authorization failed' }, 400); };
+  h.store.set('automatic_mirrors', 'false');
+  await assert.rejects(h.source.resolve(item), /Account settings changed/);
+  assert.equal(h.apiCalls().length, 1); assert.equal(h.secureWrites.length, 0);
+});
+
+test('alternate website login preserves the silent warm-up and manual verification path', async t => {
+  let clear = false;
+  const h = harness(t, { values: { email: 'reader@example.test' }, secrets: { motdepasse: 'password' }, fetch: async url => {
+    if (url.endsWith('/login')) return json({ success: 0, error: 'Authorization failed' }, 400);
+    if (url.endsWith('/rpc.php')) return clear ? json({ errors: [], response: { user_id: 42, user_key: 'website-key' } }) : challenge();
+    return json({ success: 1, file: { downloadLink: primary + '/file.epub' } });
+  }, browser: async () => { clear = true; return { status: 200, data: '<html>Home</html>' }; } });
+  assert.match((await h.source.resolve(item)).headers.Cookie, /website-key/);
+  assert.equal(h.apiCalls().filter(call => call.url.endsWith('/rpc.php')).length, 2);
+  assert.equal(h.browserCalls.length, 1);
+  assert.ok(!JSON.stringify(h.browserCalls).includes('password'));
 });

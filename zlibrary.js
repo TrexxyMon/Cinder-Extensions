@@ -7,7 +7,7 @@ var Zlibrary = {};
 
 Zlibrary.id = "zlibrary";
 Zlibrary.name = "Z-Library";
-Zlibrary.version = "1.3.0";
+Zlibrary.version = "1.3.1";
 Zlibrary.icon = "book-outline";
 Zlibrary.description = "Search, discover, and download ebooks through your Z-Library account.";
 
@@ -34,10 +34,13 @@ Zlibrary.getSettings = function () {
       // Preserve the existing user-selected origin and storage key.
       id: "domaine",
       label: "Z-Library Domain",
-      type: "text",
-      defaultValue: "z-library.ec",
-      placeholder: "z-library.ec, librella.fi, lexlib.fi",
+      type: "select",
+      defaultValue: "",
+      options: this._domainOptions(),
+      subtitle: "Auto remembers a working mirror. Existing domain selections are preserved.",
     },
+    { id: "custom_domain", label: "Custom Domain (optional)", type: "text",
+      placeholder: "Used only when Custom is selected" },
     {
       id: "langues",
       label: "Preferred Languages",
@@ -47,7 +50,7 @@ Zlibrary.getSettings = function () {
     { id: "email", label: "Email Address", type: "text", placeholder: "you@example.com" },
     { id: "motdepasse", label: "Password", type: "password", placeholder: "Your Z-Library password" },
     { id: "automatic_mirrors", label: "Automatic Mirror Fallback", type: "toggle", defaultValue: true,
-      subtitle: "Try another API mirror when the selected domain is unavailable." },
+      subtitle: "Try other mirrors when a specific domain is selected. Auto always uses fallback." },
     { id: "preferred_format", label: "Preferred Format", type: "select", defaultValue: "", options: [
       { label: "Any", value: "" }, { label: "EPUB", value: "epub" }, { label: "PDF", value: "pdf" },
       { label: "MOBI", value: "mobi" }, { label: "AZW3", value: "azw3" },
@@ -74,6 +77,25 @@ Zlibrary._browserTask = null;
 Zlibrary._warmupTask = null;
 Zlibrary._loginTask = null;
 
+Zlibrary._domainOptions = function () {
+  var options = [{ label: "Auto (recommended)", value: "" }], known = [], self = this;
+  function add(value) {
+    var base = self._normalizeBase(value);
+    if (!base || known.indexOf(base) >= 0) return;
+    known.push(base); options.push({ label: base.slice(8), value: base.slice(8) });
+  }
+  this._SEEDS.forEach(add);
+  (this._settingsDomains || []).forEach(add);
+  // Saved URLs can include https:// or a trailing /eapi. Include the exact
+  // stored value so the existing setting remains selected without migration.
+  if (this._savedDomain && this._savedDomain !== "custom" && !options.some(function (item) { return item.value === self._savedDomain; })) {
+    var saved = this._normalizeBase(this._savedDomain);
+    if (saved) options.push({ label: saved.slice(8) + " (saved)", value: this._savedDomain });
+  }
+  options.push({ label: "Custom", value: "custom" });
+  return options;
+};
+
 Zlibrary._lire = async function (key, secret) {
   var value = await (secret ? cinder.secureStore : cinder.store).get(key);
   return value == null ? "" : String(value).trim();
@@ -89,7 +111,11 @@ Zlibrary._normalizeBase = function (value) {
   return "https://" + host;
 };
 Zlibrary._base = async function () {
-  var base = this._normalizeBase((await this._lire("domaine", false)) || "z-library.ec");
+  var selected = await this._lire("domaine", false);
+  this._savedDomain = selected;
+  this._autoDomain = !selected;
+  var value = selected === "custom" ? await this._lire("custom_domain", false) : selected || "z-library.ec";
+  var base = this._normalizeBase(value);
   if (!base) throw this._error("config", "Enter a valid HTTPS Z-Library domain in the extension settings.");
   this._settingsBase = base;
   return base;
@@ -165,7 +191,7 @@ Zlibrary._refreshMirrors = function (cached) {
 Zlibrary._candidates = async function () {
   var preferred = await this._base();
   var automatic = await cinder.store.get("automatic_mirrors");
-  if (automatic === false || automatic === "false" || automatic === "0") return { preferred: preferred, domains: [preferred] };
+  if (!this._autoDomain && (automatic === false || automatic === "false" || automatic === "0")) return { preferred: preferred, domains: [preferred] };
   var remembered = await this._storedJson("working_mirror_v1");
   var cached = await this._storedJson("mirror_cache_v1");
   var domains = [], self = this;
@@ -202,33 +228,54 @@ Zlibrary._withBrowserCookies = async function (base, headers, includeAnonymous) 
 Zlibrary._isChallenge = function (data) {
   return typeof data === "string" && /<title[^>]*>\s*(?:Just a moment|Attention Required)|Checking your browser|Verifying your browser|cf[-_]challenge|challenge-platform|DiamWall|enable javascript and cookies/i.test(data);
 };
+Zlibrary._errorText = function (data) {
+  var detail = data && (data.response && data.response.message || data.error || data.errors && data.errors[0] || data.message);
+  return detail && typeof detail === "object" ? String(detail.message || detail.code || "") : String(detail || "");
+};
+Zlibrary._isRateLimited = function (data) {
+  return /too many (?:logins|requests|attempts)|rate[ _-]?limit|login.{0,20}limit/i.test(this._errorText(data));
+};
+Zlibrary._isAuthError = function (data) {
+  return /auth|session|unauthor|log.?in|sign.?in|user.{0,12}(?:invalid|expired|not found)/i.test(this._errorText(data));
+};
+Zlibrary._loginUser = function (data) {
+  var user = data && (data.user || data.response), id = user && (user.id || user.user_id), key = user && (user.remix_userkey || user.user_key);
+  if (!/^\d+$/.test(String(id || "")) || typeof key !== "string" || !key || /[\x00-\x20\x7f;,]/.test(key)) return null;
+  return { id: String(id), remix_userkey: key };
+};
 Zlibrary._isQuota = function (data) {
-  var detail = data && (data.error || data.message), message = detail && typeof detail === "object" ? String(detail.message || detail.code || "") : String(detail || "");
+  var message = this._errorText(data);
   return !!(data && (data.allowDownload === false || data.file && data.file.allowDownload === false)) || /daily.{0,25}limit|download.{0,25}limit|quota|limit.{0,25}(?:reached|exceeded)/i.test(message);
 };
 Zlibrary._response = function (response, operation) {
   if (!response) throw this._error("mirror", "Z-Library returned no response.");
   var status = Number(response.status), data = this._parseJson(response.data);
   if (this._isChallenge(response.data)) throw this._error("challenge", "Z-Library requires website verification. Open Verify Website in extension settings, then retry.");
+  if (status === 429 || this._isRateLimited(data)) throw this._error("rate", "Z-Library is temporarily limiting requests or sign-ins. Please wait before retrying.");
   if (this._isQuota(data)) throw this._error("quota", "Your daily Z-Library download limit has been reached. Try again after it resets.");
-  if (status === 429) throw this._error("rate", "Z-Library is temporarily limiting requests. Please wait before retrying.");
   if (!status || status === 408 || status >= 500 || !data) throw this._error("mirror", "Z-Library did not return usable API data (" + operation + ").");
+  // The API uses HTTP 400 for expired/missing sessions, not just malformed
+  // input. Read that JSON reason before falling back to a generic HTTP error.
+  if (status === 400 && this._isAuthError(data) && operation !== "sign in") throw this._error("auth", "Z-Library session expired or was rejected. Check your account settings.");
+  if (operation === "sign in" && (status === 400 || status === 401 || status === 403)) throw this._error("credentials", "Z-Library rejected the sign-in. Check your credentials or use session keys in extension settings.");
   if (status === 401 || status === 403) throw this._error("auth", "Z-Library session expired or was rejected. Check your account settings.");
   if (status < 200 || status >= 300) throw this._error("api", "Z-Library returned HTTP " + status + " (" + operation + ").");
   return data;
 };
 Zlibrary._validate = function (data, operation) {
-  var detail = data && (data.error || data.message), message = detail && typeof detail === "object" ? String(detail.message || detail.code || "") : String(detail || "");
+  if (this._isRateLimited(data)) throw this._error("rate", "Z-Library is temporarily limiting requests or sign-ins. Please wait before retrying.");
   if (this._isQuota(data)) {
     throw this._error("quota", "Your daily Z-Library download limit has been reached. Try again after it resets.");
   }
+  if (operation === "sign in") {
+    if (this._loginUser(data)) return data;
+    throw this._error("credentials", "Z-Library rejected the sign-in. Check your credentials or use session keys in extension settings.");
+  }
   if (data && (Number(data.success) === 0 || data.error)) {
-    if (operation === "sign in") throw this._error("credentials", "Z-Library rejected the sign-in. Check your credentials or use session keys in extension settings.");
-    if (/auth|session|unauthor|log.?in|sign.?in|user.{0,12}(?:invalid|expired|not found)/i.test(message)) throw this._error("auth", "Z-Library session expired or was rejected.");
+    if (this._isAuthError(data)) throw this._error("auth", "Z-Library session expired or was rejected.");
     throw this._error("api", "Z-Library rejected the " + operation + " request.");
   }
-  var valid = operation === "sign in" ? Number(data.success) === 1 && (data.user || data.response)
-    : operation === "download link" ? Number(data.success) === 1 && data.file
+  var valid = operation === "download link" ? Number(data.success) === 1 && data.file
     : Array.isArray(data.books) || Array.isArray(data.results) || data.exactMatch && Array.isArray(data.exactMatch.books);
   if (!valid) throw this._error("mirror", "Z-Library returned an unexpected API response (" + operation + ").");
   return data;
@@ -236,6 +283,7 @@ Zlibrary._validate = function (data, operation) {
 Zlibrary._requestAt = async function (base, path, options, operation, context, freshCookies) {
   this._active(context);
   var headers = await this._withBrowserCookies(base, Object.assign({}, options.headers || {}, { Referer: base + "/" }), freshCookies);
+  if (options.method === "POST") headers.Origin = base;
   this._active(context);
   var timeout = Math.min(3000, Math.max(1, context.deadline - Date.now()));
   var response, request = Object.assign({}, options, { headers: headers, timeout: timeout, signal: context.signal });
@@ -298,7 +346,7 @@ Zlibrary._api = async function (path, options, operation, context) {
       return { data: data, base: base, domains: candidates.domains };
     } catch (err) {
       this._active(context);
-      if (!err || (err.kind !== "mirror" && err.kind !== "challenge")) throw err;
+      if (!err || (err.kind !== "mirror" && err.kind !== "challenge")) { if (err) err.base = base; throw err; }
       last = err;
       if (err.kind === "challenge" && !challenged) { challenged = base; this._lastChallengeBase = base; this._lastChallengePreferred = candidates.preferred; this._settingsBase = base; }
     }
@@ -311,7 +359,7 @@ Zlibrary._api = async function (path, options, operation, context) {
       return { data: retried, base: challenged, domains: candidates.domains };
     } catch (err) {
       this._active(context);
-      if (!err || (err.kind !== "mirror" && err.kind !== "challenge")) throw err;
+      if (!err || (err.kind !== "mirror" && err.kind !== "challenge")) { if (err) err.base = challenged; throw err; }
       last = err;
     }
   }
@@ -363,7 +411,7 @@ Zlibrary._session = async function (force, context) {
   var manual = await this._manualSession();
   if (manual) { if (force) throw this._error("auth", "These Z-Library session keys were rejected. Update or clear them in extension settings."); return manual; }
   if (!force) { var saved = await this._sessionSiConnu(); if (saved) return saved; }
-  var email = await this._lire("email", false), password = await this._lire("motdepasse", true);
+  var email = await this._lire("email", false), password = String(await cinder.secureStore.get("motdepasse") || "");
   if (!email || !password) throw this._error("config", "Enter your Z-Library email and password, or session keys, in extension settings.");
   // Share simultaneous login work; never persist the password in the normal store.
   var signature = email + "\n" + password, self = this;
@@ -373,11 +421,29 @@ Zlibrary._session = async function (force, context) {
   var work = (async function () {
     var headers = self._headers(null); headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
     headers["X-Requested-With"] = "XMLHttpRequest";
-    var reply = await self._api("/eapi/user/login", { method: "POST", headers: headers, body: self._form({ email: email, password: password }) }, "sign in", context);
-    var user = reply.data.user || reply.data.response || {};
-    if (!user.id || !user.remix_userkey) throw self._error("auth", "Z-Library did not return a usable sign-in session.");
+    var reply;
+    try {
+      reply = await self._api("/eapi/user/login", { method: "POST", headers: headers, body: self._form({ email: email, password: password }) }, "sign in", context);
+    } catch (err) {
+      // The website login has a different form/response contract. Try it once
+      // on the same mirror after an API refusal, never after a login rate limit.
+      var base = err && self._normalizeBase(err.base);
+      if (!base || ["credentials", "auth", "api"].indexOf(err.kind) < 0) throw err;
+      self._active(context);
+      if (email !== await self._lire("email", false) || password !== String(await cinder.secureStore.get("motdepasse") || "") || await self._manualSession()) throw self._error("cancel", "Account settings changed. Please retry.");
+      var options = { method: "POST", headers: headers, body: self._form({ isModal: "true", email: email, password: password, site_mode: "books", action: "login", gg_json_mode: "1", redirectUrl: base + "/" }) };
+      var data;
+      try { data = await self._requestAt(base, "/rpc.php", options, "sign in", context, true); }
+      catch (rpcError) {
+        if (!rpcError || rpcError.kind !== "challenge" || !await self._warmPostOrigin(base, context)) throw rpcError;
+        data = await self._requestAt(base, "/rpc.php", options, "sign in", context, true);
+      }
+      reply = { data: data, base: base };
+    }
+    var user = self._loginUser(reply.data);
+    if (!user) throw self._error("auth", "Z-Library did not return a usable sign-in session.");
     self._active(context);
-    if (email !== await self._lire("email", false) || password !== await self._lire("motdepasse", true) || await self._manualSession()) throw self._error("cancel", "Account settings changed. Please retry.");
+    if (email !== await self._lire("email", false) || password !== String(await cinder.secureStore.get("motdepasse") || "") || await self._manualSession()) throw self._error("cancel", "Account settings changed. Please retry.");
     await cinder.secureStore.set("user_id", String(user.id));
     await cinder.secureStore.set("user_key", String(user.remix_userkey));
     await cinder.secureStore.set("session_email_v1", email);
@@ -396,13 +462,15 @@ Zlibrary._candidatesForSettings = async function () {
   var preferred;
   try { preferred = await this._base(); } catch (_) { return "https://z-library.ec"; }
   var automatic = await cinder.store.get("automatic_mirrors");
-  if (automatic === false || automatic === "false" || automatic === "0") return preferred;
+  if (!this._autoDomain && (automatic === false || automatic === "false" || automatic === "0")) return preferred;
   if (this._lastChallengeBase && this._lastChallengePreferred === preferred) return this._lastChallengeBase;
   var remembered = await this._storedJson("working_mirror_v1");
   return remembered && remembered.preferred === preferred && this._normalizeBase(remembered.base) || preferred;
 };
 Zlibrary.getSettingsAsync = async function () {
   this._settingsBase = await this._candidatesForSettings();
+  var cached = await this._storedJson("mirror_cache_v1");
+  this._settingsDomains = cached && Array.isArray(cached.domains) ? cached.domains.slice(0, 100) : [];
   return this.getSettings();
 };
 
