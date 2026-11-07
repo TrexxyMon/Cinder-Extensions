@@ -2,7 +2,7 @@ var BatCave = {};
 
 BatCave.id = "batcave";
 BatCave.name = "BatCave";
-BatCave.version = "0.2.2-cinder";
+BatCave.version = "0.2.3-cinder";
 BatCave.icon = "BC";
 BatCave.description = "Read western comics from BatCave. No debrid required.";
 BatCave.contentType = "comics";
@@ -36,11 +36,15 @@ BatCave._headers = function(extra) {
 };
 
 BatCave._browserHeaders = function(extra) {
-  return this._headers(Object.assign({
+  var headers = this._headers(Object.assign({
     "X-Cinder-Suppress-Interactive": "1",
     "X-Cinder-Min-Wait-Ms": "750",
     "X-Cinder-Max-Wait-Ms": "18000",
   }, extra || {}));
+  // Use the same platform browser identity as Verify Website. A desktop
+  // request header paired with a mobile navigator can invalidate clearance.
+  delete headers["User-Agent"];
+  return headers;
 };
 
 BatCave._imageHeaders = function(imageUrl, referer) {
@@ -156,13 +160,19 @@ BatCave._setCachedHtml = function(url, html) {
 
 BatCave._fetchHtml = async function(url, options) {
   options = options || {};
-  var res;
+  var deadline = options.searchBudgetMs ? Date.now() + options.searchBudgetMs : Infinity;
+  var remaining = function() {
+    var ms = Math.min(30000, deadline - Date.now());
+    if (ms <= 0) throw new Error("BatCave search timed out. Open extension settings > Verify Website if a browser check is required.");
+    return ms;
+  };
+  var res, triedStandard = false;
   if (cinder.fetchBrowser) {
     try {
       res = await cinder.fetchBrowser(url, {
         headers: this._browserHeaders(options.browserHeaders),
       });
-      if (res && res.data && this._isProtectionPage(res.data)) {
+      if (options.retryProtection !== false && res && res.data && this._isProtectionPage(res.data)) {
         var retryHeaders = Object.assign({}, options.browserHeaders || {}, {
           "X-Cinder-Suppress-Interactive": "1",
           "X-Cinder-Visible-Layout": "1",
@@ -178,15 +188,16 @@ BatCave._fetchHtml = async function(url, options) {
       if (cinder.warn) cinder.warn("BatCave browser request failed; trying the standard request path.");
     }
   } else if (cinder.fetch) {
+    triedStandard = true;
     res = await cinder.fetch(url, {
       headers: this._headers(options.headers),
-      timeout: 30000,
+      timeout: remaining(),
     });
   }
-  if ((!res || res.status !== 200 || !res.data) && cinder.fetch) {
+  if ((!res || res.status !== 200 || !res.data) && !triedStandard && cinder.fetch) {
     res = await cinder.fetch(url, {
       headers: this._headers(options.headers),
-      timeout: 30000,
+      timeout: remaining(),
     });
   }
   if (!res || res.status !== 200 || !res.data) {
@@ -194,7 +205,7 @@ BatCave._fetchHtml = async function(url, options) {
   }
   var html = String(res.data || "");
   if (this._isProtectionPage(html)) {
-    throw new Error("BatCave site protection was not cleared by the browser bridge.");
+    throw new Error("BatCave requires website verification. Open extension settings > Verify Website, complete the browser check, then retry.");
   }
   return html;
 };
@@ -336,10 +347,16 @@ BatCave.search = async function(query, page) {
   var url = this.BASE_URL + "/search/" + encodeURIComponent(safeQuery);
   if (page > 0) url += "/page/" + (page + 1) + "/";
   var html = await this._fetchHtml(url, {
+    // Search has a shorter host deadline than chapter/page extraction. Use
+    // the proven visible-layout path first rather than waiting 18s then 26s.
+    retryProtection: false,
+    searchBudgetMs: 14000,
     browserHeaders: {
+      "X-Cinder-Visible-Layout": "1",
+      "X-Cinder-Wake-Page": "1",
       "X-Cinder-Wait-For-Selector": "#dle-content",
       "X-Cinder-Min-Wait-Ms": "600",
-      "X-Cinder-Max-Wait-Ms": "18000",
+      "X-Cinder-Max-Wait-Ms": "9000",
     },
   });
   var items = this._parseCards(html);
@@ -528,7 +545,11 @@ BatCave.getPages = async function(chapterId) {
 };
 
 BatCave.getSettings = function() {
-  return [];
+  return [{
+    id: "verify_website", label: "Verify Website", type: "webview",
+    url: this.BASE_URL + "/search/batman",
+    subtitle: "Complete the browser check, then return and retry search.",
+  }];
 };
 
 // Older Cinder builds request getBookDetails() on detail screens.

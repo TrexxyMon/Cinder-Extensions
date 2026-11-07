@@ -83,7 +83,56 @@ test('manifest advertises the same update as the script without changing compati
   const { source } = load('');
   const repo = JSON.parse(readFileSync(path.join(__dirname, '..', 'repo.json'), 'utf8'));
   const item = repo.extensions.find(item => item.id === source.id);
-  assert.equal(source.version, '0.2.2-cinder');
+  assert.equal(source.version, '0.2.3-cinder');
   assert.equal(item.version, source.version);
   assert.equal(item.minCinderVersion, '2.0.0');
+});
+
+
+test('search surfaces protection without an unreachable second browser wait', async () => {
+  const { source, requests } = load('<title>Just a moment...</title>');
+  await assert.rejects(source.search('fixture'), /settings > Verify Website/);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].options.headers['X-Cinder-Max-Wait-Ms'], '9000');
+  assert.equal(requests[0].options.headers['X-Cinder-Suppress-Interactive'], '1');
+  assert.equal(requests[0].options.headers['X-Cinder-Visible-Layout'], '1');
+  const settings = source.getSettings();
+  assert.equal(settings[0].type, 'webview');
+  assert.equal(settings[0].url, 'https://batcave.biz/search/batman');
+});
+test('verified search preserves its query, paging and parsed results', async () => {
+  const { source, requests } = load('<div id="dle-content">fixture</div>');
+  source._parseCards = value => value.includes('fixture') ? [{ id: '/1-test.html', title: 'Fixture' }] : [];
+  assert.deepEqual(plain(await source.search('one & two', 1)), [{ id: '/1-test.html', title: 'Fixture' }]);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, 'https://batcave.biz/search/one%20%26%20two/page/2/');
+});
+test('chapter/page automatic recovery remains available', async () => {
+  const { source, context } = load(''); let calls = 0;
+  context.cinder.fetchBrowser = async () => ({ status: 200, data: ++calls === 1 ? '<title>Just a moment...</title>' : html({ images: ['/1.jpg'], pages: 1 }) });
+  assert.equal((await source.getPages('/reader/100/200')).length, 1);
+  assert.equal(calls, 2);
+});
+
+test('browser requests preserve the platform identity used during verification', () => {
+  const { source } = load('');
+  assert.equal(source._browserHeaders()['User-Agent'], undefined);
+  assert.ok(source._headers()['User-Agent']);
+  assert.ok(source._imageHeaders('https://img.batcave.biz/1.jpg')['User-Agent']);
+});
+test('plain-request fallback receives only the remaining search budget', async () => {
+  const { source, context } = load(''); let now = 0, timeout;
+  context.Date = { now: () => now };
+  context.cinder.fetchBrowser = async () => { now = 10000; return { status: 0, data: '' }; };
+  context.cinder.fetch = async (_url, options) => { timeout = options.timeout; return { status: 200, data: '<div id="dle-content"></div>' }; };
+  await source.search('fixture'); assert.equal(timeout, 4000);
+});
+test('an expired search cannot start a late fallback and native-only failure is not requested twice', async () => {
+  const { source, context } = load(''); let now = 0, calls = 0;
+  context.Date = { now: () => now };
+  context.cinder.fetchBrowser = async () => { now = 15000; return { status: 0, data: '' }; };
+  context.cinder.fetch = async () => { calls++; return { status: 500, data: '' }; };
+  await assert.rejects(source.search('fixture'), /timed out/); assert.equal(calls, 0);
+  delete context.cinder.fetchBrowser; now = 0;
+  await assert.rejects(source.search('fixture'), /request failed/); assert.equal(calls, 1);
 });
