@@ -403,7 +403,7 @@
                            "description":  "Read manga, manhwa, and manhua from BBato.",
                            "language":  "English",
                            "contentType":  "manga",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/bbato.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@3acf41a30940226c65663689172d9489e4a71075/bbato.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "manga"
@@ -468,7 +468,7 @@
                            "description":  "Direct download-source extension for LibGen.",
                            "language":  "Multilingual",
                            "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/libgen.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@3acf41a30940226c65663689172d9489e4a71075/libgen.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "ebook"
@@ -501,7 +501,7 @@
                            "description":  "Search public Luminare light novels and build available chapters into EPUB on device. No debrid required.",
                            "language":  "English",
                            "contentType":  "webnovel",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/luminaretranslations.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@3acf41a30940226c65663689172d9489e4a71075/luminaretranslations.js",
                            "minCinderVersion":  "1.1.0",
                            "contentTypes":  [
                                                 "webnovel"
@@ -519,7 +519,7 @@
                            "description":  "Search public BronsTL light novels and build available chapters into EPUB on device. No debrid required.",
                            "language":  "English",
                            "contentType":  "webnovel",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/bronstl.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@3acf41a30940226c65663689172d9489e4a71075/bronstl.js",
                            "minCinderVersion":  "1.1.0",
                            "contentTypes":  [
                                                 "webnovel"
