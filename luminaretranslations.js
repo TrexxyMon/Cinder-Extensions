@@ -2,11 +2,11 @@ var LuminareTranslationsSource = {};
 
 LuminareTranslationsSource.id = "luminaretranslations";
 LuminareTranslationsSource.name = "Luminare Translations";
-LuminareTranslationsSource.version = "0.1.1-cinder";
+LuminareTranslationsSource.version = "0.1.2-cinder";
 LuminareTranslationsSource.icon = "LT";
 LuminareTranslationsSource.description = "Search public Luminare light novels and build available chapters into EPUB on device. No debrid required.";
-LuminareTranslationsSource.contentType = "books";
-LuminareTranslationsSource.contentTypes = ["webnovel", "ebook"];
+LuminareTranslationsSource.contentType = "webnovel";
+LuminareTranslationsSource.contentTypes = ["webnovel"];
 LuminareTranslationsSource.contentSubtypes = ["lightNovel", "webFiction", "translatedNovel"];
 LuminareTranslationsSource.capabilities = {
 	search: true,

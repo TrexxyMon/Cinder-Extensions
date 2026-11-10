@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.6",
+	version: "0.1.7",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
@@ -107,7 +107,9 @@ __cinderExport = {
 		return (await this._getSetting("base_url", this._DEFAULT_BASE_URL)).replace(/\/+$/, "");
 	},
 
-	_fetchHtml: async function(url, referer) {
+	_fetchHtml: async function(url, referer, requestOptions) {
+		requestOptions = requestOptions || {};
+		var attempts = requestOptions.retry === false ? 1 : 2;
 		var headers = {
 			Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 			"Accept-Language": "en-US,en;q=0.8",
@@ -117,25 +119,25 @@ __cinderExport = {
 		// referring catalog/file page. Preserve it on retries and nested hops.
 		if (referer) headers.Referer = referer;
 		var resp = null;
-		for (var attempt = 0; attempt < 2; attempt++) {
+		for (var attempt = 0; attempt < attempts; attempt++) {
 			resp = await cinder.fetch(url, {
 				headers: headers,
-				timeout: 30000,
+				timeout: requestOptions.timeout || 30000,
 			});
 			if (resp && resp.status >= 200 && resp.status < 400) {
 				return resp.data || "";
 			}
 			var status = resp ? Number(resp.status) || 0 : 0;
-			if (attempt === 0 && (status === 0 || status >= 500)) {
+			if (attempt + 1 < attempts && (status === 0 || status >= 500)) {
 				await new Promise(function(resolve) { setTimeout(resolve, 250); });
 				continue;
 			}
 			break;
 		}
-		var finalStatus = resp ? resp.status : "unknown";
+		var finalStatus = resp ? Number(resp.status) || 0 : 0;
 		var prefix = finalStatus === 0
-			? "Fixture request failed before receiving an HTTP response"
-			: "Fixture request failed with status " + finalStatus;
+			? "LibGen server did not return an HTTP response (connection failed or timed out)"
+			: "LibGen server returned HTTP " + finalStatus;
 		throw new Error(prefix + ": " + url);
 	},
 
@@ -565,8 +567,17 @@ __cinderExport = {
 
 	search: async function(query, page) {
 		var url = await this._searchUrl(query, page || 0);
-		cinder.log("[GenericDirectFixture] Search: " + url);
-		var html = await this._fetchHtml(url);
+		cinder.log("[LibGen] Search: " + url);
+		// Search has a 15s caller deadline (30s for downloads/test connection).
+		// Do not inherit download retries: two 30s attempts continue running
+		// after the caller has timed out and cannot return results anymore.
+		var html = await this._fetchHtml(url, undefined, { timeout: 12000, retry: false });
+		if (!String(html).trim()) {
+			throw new Error("LibGen server returned an empty search response: " + url);
+		}
+		if (/<title>\s*Welcome to nginx!\s*<\/title>/i.test(html)) {
+			throw new Error("LibGen server returned a default web-server page instead of its catalog: " + url);
+		}
 		return await this._parseResults(html);
 	},
 

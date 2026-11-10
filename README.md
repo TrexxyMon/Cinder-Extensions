@@ -350,3 +350,8 @@ cinder.log/warn/error(...)            // Extension logging
 
 Extensions in this repository are provided as-is for educational purposes.
 
+
+
+### External source categories
+
+`repo.json` may include optional `categoryAnnotations` for third-party sources. Each entry uses `runtime`, `upstreamId`, the exact HTTPS `scriptUrl`, and `contentTypes`. Cinder uses these only when the upstream manifest does not declare a category; a user override takes priority. Older Cinder versions ignore this optional field. The initial annotation classifies Suwatte BatCave as comics without putting site-specific rules in the app. Source scripts and download behavior are unchanged.

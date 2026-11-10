@@ -1,6 +1,16 @@
 {
     "name":  "Cinder Reader Extensions",
     "author":  "CinderDev",
+    "categoryAnnotations": [
+        {
+            "runtime": "suwatte",
+            "upstreamId": "batcave.biz",
+            "scriptUrl": "https://bergelmir.mantton.com/sources/batcave.stt",
+            "contentTypes": [
+                "comics"
+            ]
+        }
+    ],
     "extensions":  [
                        {
                            "id":  "mayberry",
@@ -389,7 +399,7 @@
                        {
                            "id":  "bbato",
                            "name":  "BBato",
-                           "version":  "1.0.4-cinder",
+                           "version":  "1.0.5-cinder",
                            "description":  "Read manga, manhwa, and manhua from BBato.",
                            "language":  "English",
                            "contentType":  "manga",
@@ -454,7 +464,7 @@
                        {
                            "id":  "libgen",
                            "name":  "LibGen",
-                           "version":  "0.1.6",
+                           "version":  "0.1.7",
                            "description":  "Direct download-source extension for LibGen.",
                            "language":  "Multilingual",
                            "contentType":  "books",
@@ -487,15 +497,14 @@
                        {
                            "id":  "luminaretranslations",
                            "name":  "Luminare Translations",
-                           "version":  "0.1.1-cinder",
+                           "version":  "0.1.2-cinder",
                            "description":  "Search public Luminare light novels and build available chapters into EPUB on device. No debrid required.",
                            "language":  "English",
-                           "contentType":  "books",
+                           "contentType":  "webnovel",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/luminaretranslations.js",
                            "minCinderVersion":  "1.1.0",
                            "contentTypes":  [
-                                                "webnovel",
-                                                "ebook"
+                                                "webnovel"
                                             ],
                            "contentSubtypes":  [
                                                    "lightNovel",
@@ -506,15 +515,14 @@
                        {
                            "id":  "bronstl",
                            "name":  "BronsTL",
-                           "version":  "0.1.1-cinder",
+                           "version":  "0.1.2-cinder",
                            "description":  "Search public BronsTL light novels and build available chapters into EPUB on device. No debrid required.",
                            "language":  "English",
-                           "contentType":  "books",
+                           "contentType":  "webnovel",
                            "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/bronstl.js",
                            "minCinderVersion":  "1.1.0",
                            "contentTypes":  [
-                                                "webnovel",
-                                                "ebook"
+                                                "webnovel"
                                             ],
                            "contentSubtypes":  [
                                                    "lightNovel",

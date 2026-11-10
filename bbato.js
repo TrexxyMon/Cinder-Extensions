@@ -2,7 +2,7 @@
 
 BBato.id = "bbato";
 BBato.name = "BBato";
-BBato.version = "1.0.4-cinder";
+BBato.version = "1.0.5-cinder";
 BBato.icon = "BB";
 BBato.description = "Read manga, manhwa, and manhua from BBato.";
 BBato.contentType = "manga";
@@ -19,6 +19,11 @@ BBato.capabilities = {
 
 BBato.BASE_URL = "https://bbato.com";
 BBato._coverCache = {};
+BBato._coverInFlight = {};
+BBato._availabilityProbe = null;
+BBato._availableUntil = 0;
+BBato._unavailableUntil = 0;
+BBato._availabilityError = "";
 
 BBato._headers = function(extra) {
   var headers = {
@@ -95,8 +100,70 @@ BBato._imageFromHtml = function(html) {
   return this._absUrl(this._attr(html, "data-src") || this._attr(html, "src"));
 };
 
+BBato._markUnavailable = function(message) {
+  this._availableUntil = 0;
+  this._unavailableUntil = Date.now() + 60000;
+  this._availabilityError = message || "BBato is temporarily unavailable.";
+};
+
+BBato._ensureAvailable = async function(url, headers) {
+  var now = Date.now();
+  if (now < this._availableUntil) return;
+  if (now < this._unavailableUntil) {
+    throw new Error(this._availabilityError || "BBato is temporarily unavailable.");
+  }
+  if (this._availabilityProbe) return await this._availabilityProbe;
+
+  var self = this;
+  var request = (async function() {
+    var res;
+    try {
+      res = await cinder.fetch(url, {
+        headers: headers,
+        timeout: 6000,
+      });
+    } catch (error) {
+      self._markUnavailable("BBato did not respond to its availability check.");
+      throw error;
+    }
+
+    var status = Number(res && res.status) || 0;
+    if (!status || status === 403 || status === 429 || status >= 500) {
+      var message = status
+        ? "BBato is temporarily unavailable (HTTP " + status + ")."
+        : "BBato did not respond to its availability check.";
+      self._markUnavailable(message);
+      throw new Error(message);
+    }
+    self._unavailableUntil = 0;
+    self._availabilityError = "";
+    self._availableUntil = Date.now() + 300000;
+    return { url: url, response: res };
+  })();
+
+  this._availabilityProbe = request;
+  try {
+    return await request;
+  } finally {
+    this._availabilityProbe = null;
+  }
+};
+
 BBato._fetchText = async function(url, headers) {
-  var res = await cinder.fetch(url, { headers: headers || this._headers(), timeout: 30000 });
+  var requestHeaders = headers || this._headers();
+  var primed = await this._ensureAvailable(url, requestHeaders);
+  var res = primed && primed.url === url
+    ? primed.response
+    : await cinder.fetch(url, { headers: requestHeaders, timeout: 12000 });
+  var status = Number(res && res.status) || 0;
+  if (status < 200 || status >= 400) {
+    if (!status || status >= 500) {
+      this._markUnavailable(status
+        ? "BBato is temporarily unavailable (HTTP " + status + ")."
+        : "BBato did not respond to the request.");
+    }
+    throw new Error("BBato request failed" + (status ? " with HTTP " + status : "") + ".");
+  }
   return String(res && res.data ? res.data : "");
 };
 
@@ -121,31 +188,65 @@ BBato._coverPayload = async function(url) {
     coverHeaders: this._imageHeaders(),
   };
 
+  // Current Cinder builds attach these headers when rendering the image. The
+  // capability is optional so this extension still runs on older APKs.
+  if (cinder && cinder.features && cinder.features.coverHeaders) {
+    this._coverCache[url] = payload;
+    return payload;
+  }
+  if (this._coverInFlight[url]) return await this._coverInFlight[url];
+
   // Older Cinder builds do not pass custom image headers to cover renders.
   // Inline BBato thumbnails as data URIs so covers load without app changes.
-  if (cinder && typeof cinder.fetchBase64 === "function") {
-    try {
-      var res = await cinder.fetchBase64(url, {
-        headers: this._imageHeaders(),
-        timeout: 15000,
-      });
-      if (res && res.status >= 200 && res.status < 300 && res.data) {
-        payload = {
-          cover: "data:" + this._mimeFromHeaders(res.headers) + ";base64," + res.data,
-          coverHeaders: this._imageHeaders(),
-        };
+  var self = this;
+  var request = (async function() {
+    var resolved = payload;
+    if (cinder && typeof cinder.fetchBase64 === "function") {
+      try {
+        var res = await cinder.fetchBase64(url, {
+          headers: self._imageHeaders(),
+          timeout: 8000,
+        });
+        if (res && res.status >= 200 && res.status < 300 && res.data) {
+          resolved = {
+            cover: "data:" + self._mimeFromHeaders(res.headers) + ";base64," + res.data,
+            coverHeaders: self._imageHeaders(),
+          };
+        }
+      } catch (e) {
+        // Keep the direct URL for newer Cinder builds that honor coverHeaders.
       }
-    } catch (e) {
-      // Keep the direct URL for newer Cinder builds that honor coverHeaders.
     }
-  }
+    self._coverCache[url] = resolved;
+    return resolved;
+  })();
 
-  this._coverCache[url] = payload;
-  return payload;
+  this._coverInFlight[url] = request;
+  try {
+    return await request;
+  } finally {
+    delete this._coverInFlight[url];
+  }
+};
+
+BBato._forEachConcurrent = async function(items, limit, iteratee) {
+  var nextIndex = 0;
+  var workerCount = Math.min(Math.max(1, limit || 1), items.length);
+  var workers = [];
+  for (var workerIndex = 0; workerIndex < workerCount; workerIndex++) {
+    workers.push((async function() {
+      while (nextIndex < items.length) {
+        var currentIndex = nextIndex++;
+        await iteratee(items[currentIndex], currentIndex);
+      }
+    })());
+  }
+  await Promise.all(workers);
 };
 
 BBato._parseListItems = async function(html) {
   var results = [];
+  var pendingCovers = [];
   var seen = {};
   var re = /<div[^>]+class=["'][^"']*\bunit\b[^"']*["'][^>]*>([\s\S]*?)(?=<div[^>]+class=["'][^"']*\bunit\b|<\/main>|<\/section>|$)/gi;
   var match;
@@ -173,20 +274,31 @@ BBato._parseListItems = async function(html) {
 
     var imgTag = (block.match(/<img[\s\S]*?>/i) || [])[0] || "";
     seen[path] = true;
-    var coverPayload = await this._coverPayload(this._imageFromHtml(imgTag));
-    results.push({
+    var coverUrl = this._imageFromHtml(imgTag);
+    var coverHeaders = this._imageHeaders();
+    var result = {
       id: path,
       title: title,
-      cover: coverPayload.cover,
-      coverHeaders: coverPayload.coverHeaders,
+      cover: coverUrl,
+      coverHeaders: coverHeaders,
       url: href,
       source: this.name,
       format: "manga",
       extra: {
-        coverHeaders: coverPayload.coverHeaders,
+        coverHeaders: coverHeaders,
       },
-    });
+    };
+    results.push(result);
+    if (coverUrl) pendingCovers.push({ result: result, url: coverUrl });
   }
+
+  var self = this;
+  await this._forEachConcurrent(pendingCovers, 4, async function(entry) {
+    var coverPayload = await self._coverPayload(entry.url);
+    entry.result.cover = coverPayload.cover;
+    entry.result.coverHeaders = coverPayload.coverHeaders;
+    entry.result.extra.coverHeaders = coverPayload.coverHeaders;
+  });
   return results;
 };
 

@@ -2,11 +2,11 @@ var BronsTLSource = {};
 
 BronsTLSource.id = "bronstl";
 BronsTLSource.name = "BronsTL";
-BronsTLSource.version = "0.1.1-cinder";
+BronsTLSource.version = "0.1.2-cinder";
 BronsTLSource.icon = "BT";
 BronsTLSource.description = "Search public BronsTL light novels and build available chapters into EPUB on device. No debrid required.";
-BronsTLSource.contentType = "books";
-BronsTLSource.contentTypes = ["webnovel", "ebook"];
+BronsTLSource.contentType = "webnovel";
+BronsTLSource.contentTypes = ["webnovel"];
 BronsTLSource.contentSubtypes = ["lightNovel", "translatedNovel"];
 BronsTLSource.capabilities = {
 	search: true,

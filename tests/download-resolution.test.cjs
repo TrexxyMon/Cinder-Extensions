@@ -77,6 +77,85 @@ test("LibGen search requests do not invent a referring page", async () => {
 	assert.equal(await source._fetchHtml("https://libgen.li/index.php?req=test"), "search");
 });
 
+for (const [status, message] of [[0, /did not return an HTTP response/], [503, /HTTP 503/]]) {
+	test("LibGen search ends on status " + status + " without a background retry", async () => {
+		const calls = [];
+		const source = loadSource("libgen", async (url, options) => {
+			calls.push({ url, options });
+			return { status, data: "" };
+		});
+		await assert.rejects(source.search("test", 0), message);
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(calls.length, 1);
+		assert.equal(calls[0].options.timeout, 12000);
+		assert.equal(calls[0].options.headers.Referer, undefined);
+	});
+}
+
+test("LibGen search preserves thrown network failures without retrying", async () => {
+	let count = 0;
+	const source = loadSource("libgen", async () => { count++; throw Error("Network offline"); });
+	await assert.rejects(source.search("test", 0), /Network offline/);
+	assert.equal(count, 1);
+});
+
+for (const [label, html, message] of [
+	["empty response", " \n\t", /empty search response/],
+	["default server page", "<html><title>Welcome to nginx!</title></html>", /instead of its catalog/],
+]) {
+	test("LibGen connection test does not treat a " + label + " as zero results", async () => {
+		const source = loadSource("libgen", async () => ({ status: 200, data: html }));
+		await assert.rejects(source.search("test", 0), message);
+	});
+}
+
+test("LibGen legitimate empty results remain successful and do not trigger another request", async () => {
+	let count = 0;
+	const source = loadSource("libgen", async () => { count++; return { status: 200, data: "<html>No results found</html>" }; });
+	assert.deepEqual(plain(await source.search("unmatched query", 0)), []);
+	assert.equal(count, 1);
+});
+
+test("LibGen search still parses supported table results with stable IDs and metadata", async () => {
+	function node(text = "", attrs = {}, one = {}, many = {}) {
+		return { text: () => text, attr: (name) => attrs[name],
+			querySelector: (selector) => one[selector] || null,
+			querySelectorAll: (selector) => many[selector] || [] };
+	}
+	const title = node("A Test Title", { href: detailUrl });
+	const file = node("1 MB", { href: "https://libgen.li/file.php?id=200" });
+	const cells = [node("", {}, { "a[href*='edition']": title }), node("Test Author"),
+		node("Test Publisher"), node("2020"), node("English"), node("100"),
+		node("1 MB", {}, { "a[href]": file }), node("EPUB"),
+		node("", {}, {}, { "a[href]": [node("GET", { href: adsUrl })] })];
+	const doc = node("", {}, {}, { "table.table-striped tbody tr": [node("", {}, {}, { td: cells })] });
+	const requests = [];
+	const source = loadSource("libgen", async (url, options) => {
+		requests.push({ url, options }); return { status: 200, data: "table fixture" };
+	}, { parseHTML: () => doc });
+	const results = plain(await source.search("A Test Title", 0));
+	assert.equal(results.length, 1);
+	assert.equal(results[0].id, "fixture-table-" + md5 + "-epub");
+	assert.equal(results[0].title, "A Test Title");
+	assert.equal(results[0].author, "Test Author");
+	assert.equal(results[0].url, detailUrl);
+	assert.equal(results[0].extra.directUrl, adsUrl);
+	assert.equal(results[0].extra.publisher, "Test Publisher");
+	assert.equal(results[0].extra.language, "English");
+	assert.equal(requests.length, 1);
+	assert.equal(requests[0].url, "https://libgen.li" + source._DEFAULT_SEARCH_PATH.replace("{query}", "A+Test+Title").replace("{pageParam}", ""));
+});
+
+test("LibGen keeps custom search URLs and page numbering unchanged", async () => {
+	const settings = { base_url: "https://catalog.example", search_path: "/search?q={query}&page={page}&offset={page0}" };
+	const calls = [];
+	const source = loadSource("libgen", async (url) => {
+		calls.push(url); return { status: 200, data: "<html>No results found</html>" };
+	}, { store: { get: async (key) => settings[key] } });
+	await source.search("Title & Author", 2);
+	assert.deepEqual(calls, ["https://catalog.example/search?q=Title+%26+Author&page=3&offset=2"]);
+});
+
 const filename = "Test_Book.epub";
 const endpoint = "https://readrobe.com/fetching-ebook-php";
 const pageUrl = "https://readrobe.com/authors/test/book/";
