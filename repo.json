@@ -15,14 +15,15 @@
                        {
                            "id": "goldenaudiobooks",
                            "name": "GoldenAudiobooks",
-                           "version": "0.1.1-cinder",
-                           "description": "Browse audiobooks and download or stream their ordered audio tracks directly.",
+                           "version": "0.1.2-cinder",
+                           "description": "Browse audiobooks and download their ordered audio tracks directly for offline listening.",
                            "language": "English",
                            "contentType": "audiobooks",
                            "contentTypes": ["audiobook"],
                            "excludeFromDefaultMetadataProviders": true,
+                           "capabilities": { "audioStreaming": false },
                            "debridSupport": "none",
-                           "debridDescription": "No debrid required. Direct downloads and streaming.",
+                           "debridDescription": "No debrid required. Direct downloads.",
                            "browser": {
                                "startUrl": "https://goldenaudiobooks.com/",
                                "userAgent": "desktop"

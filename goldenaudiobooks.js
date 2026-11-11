@@ -1,13 +1,13 @@
 // Independent on-device adapter. Only the site's actual audio players supply files.
-// Cinder handles native inspection, streaming, downloads, and listening progress.
+// Cinder handles native inspection, downloads, and offline listening progress.
 var GoldenAudiobooks = {
-  id: "goldenaudiobooks", name: "GoldenAudiobooks", version: "0.1.1-cinder",
+  id: "goldenaudiobooks", name: "GoldenAudiobooks", version: "0.1.2-cinder",
   icon: "headset-outline", language: "English", contentType: "audiobooks", contentTypes: ["audiobook"],
-  description: "Browse and search audiobooks with direct listening and downloads when the website provides audio files.",
+  description: "Browse and search audiobooks with direct downloads when the website provides audio files.",
   excludeFromDefaultMetadataProviders: true, debridSupport: "none",
-  debridDescription: "No debrid required. Direct downloads and streaming.",
+  debridDescription: "No debrid required. Direct downloads.",
   browser: { startUrl: "https://goldenaudiobooks.com/", userAgent: "desktop" },
-  capabilities: { search: true, searchDownloads: true, discover: true, resolve: true, download: false, manga: false },
+  capabilities: { search: true, searchDownloads: true, discover: true, resolve: true, download: false, manga: false, audioStreaming: false },
   downloadResults: { order: "source", limit: 40 },
   BASE: "https://goldenaudiobooks.com", _cache: [], _pending: {}, _cooldownUntil: 0,
   _browserPending: 0, _browserTail: null
@@ -306,7 +306,7 @@ GoldenAudiobooks.resolve = async function (item) {
 };
 GoldenAudiobooks.getSettings = function () {
   return [{ id: "verify", label: "Verify Website", type: "webview", url: this.BASE + "/", subtitle: "Complete a website check if one is requested, then retry." },
-    { id: "playback", label: "Direct Audio", type: "label", subtitle: "No debrid service is required. Listening and downloads need an audiobook-capable Cinder build. Unavailable audio parts are reported instead of returning an incomplete book." }];
+    { id: "playback", label: "Direct Audio", type: "label", subtitle: "No debrid service is required. Download to listen offline in an audiobook-capable Cinder build. Unavailable audio parts are reported instead of returning an incomplete book." }];
 };
 GoldenAudiobooks.completeSettingAction = async function () { this._cache = []; this._cooldownUntil = 0; };
 __cinderExport = GoldenAudiobooks;

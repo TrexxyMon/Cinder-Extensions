@@ -1,10 +1,10 @@
 # GoldenAudiobooks
 
-Public Cinder extension `goldenaudiobooks`, version `0.1.1-cinder`. It searches and
+Public Cinder extension `goldenaudiobooks`, version `0.1.2-cinder`. It searches and
 parses the website on the device and returns the actual audio files embedded in a
 selected book's players. No debrid account, scraping server, or additional API key
-is required. An audiobook-capable Cinder build is required for listening and
-downloads; the repository minimum is `1.2.4`.
+is required. An audiobook-capable Cinder build is required for downloads and
+offline listening; the repository minimum is `1.2.4`.
 
 ## Browsing and metadata
 
@@ -23,11 +23,12 @@ downloads; the repository minimum is `1.2.4`.
   narrators and casts, so those tags are not used to manufacture an author for a
   title whose heading does not identify one.
 
-## Listening and downloads
+## Downloads and offline listening
 
 The resolver returns an ordered `audioFiles` list through Cinder's existing
-contract. Cinder owns native duration/format inspection, streaming, downloads,
-listening positions, and import. The extension does not download audio bytes into
+contract. Cinder owns native duration/format inspection, downloads, offline
+listening positions, and import. Online Listen is disabled through
+`capabilities.audioStreaming: false`; the ordered file resolver is unchanged. The extension does not download audio bytes into
 JavaScript or involve a debrid service.
 
 Each audio player contributes one file. Repeated references in an `audio` element,
@@ -66,9 +67,9 @@ Verify Website remains an explicit setting. Rate limits receive a cooldown and
 failed requests are not retained as successful empty searches. Older Cinder API
 shapes without optional browser-session or URL helpers remain supported.
 
-Streaming still depends on the remote host offering a usable file with a native
-duration and byte-range access. Cinder checks those requirements; the presence of
-a URL in the website does not guarantee the recording remains available. If a
+The presence of a URL on the website does not guarantee the recording remains
+available. Download the files before listening; this extension no longer offers
+online streaming on Cinder builds that support the streaming opt-out. If a
 host starts requiring media-request authentication, this extension will need a
 reviewed update rather than forwarding website credentials to arbitrary hosts.
 
@@ -104,9 +105,9 @@ Run from the public repository, with `CINDER_APP` pointing at the app checkout:
 node --test tests/goldenaudiobooks.test.cjs
 ```
 
-Installed iOS and Android streaming, background playback, seeking, complete
-downloads/imports and progress restoration remain device-validation tasks. Expo
-can exercise search, browsing and metadata, but native playback availability is
+Installed iOS and Android complete downloads/imports, offline playback, seeking
+and progress restoration remain device-validation tasks. Expo can exercise
+search, browsing and metadata, but native offline playback availability is
 determined by the installed app. This is independently written extension code;
 no audiobook-dl or third-party reader implementation was copied.
 
@@ -119,3 +120,11 @@ IDs and settings are unchanged. Add or refresh the
 [public repository](https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/repo.json),
 refresh the private repository if installed, then update without uninstalling.
 The old private script remains available for cached manifests and older installs.
+
+## Download-only update (2026-11-11)
+
+Version `0.1.2-cinder` removes online Listen while retaining search, browsing,
+metadata, complete ordered downloads, and offline playback. Cinder must include
+the generic `audioStreaming` capability check to hide the action. Older app
+builds safely ignore the new flag and retain their existing menu; choose Download
+on those builds. No debrid account is required.

@@ -434,4 +434,8 @@ test('published manifest matches the actual extension and declares independent d
   const source = load().source, entry = manifest.extensions.find(item => item.id === source.id);
   assert.ok(entry); assert.equal(entry.version, source.version); assert.equal(entry.contentType, 'audiobooks');
   assert.equal(entry.debridSupport, 'none'); assert.equal(source.debridSupport, 'none');
+  assert.equal(source.capabilities.audioStreaming, false);
+  assert.equal(entry.capabilities.audioStreaming, false);
+  assert.equal(source.capabilities.resolve, true);
+  assert.equal(typeof source.resolve, 'function');
 });

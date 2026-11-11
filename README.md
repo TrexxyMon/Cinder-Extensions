@@ -16,7 +16,7 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 
 | Extension | Type | Description |
 |---|---|---|
-| **[GoldenAudiobooks](docs/goldenaudiobooks.md)** | Audiobooks | **No debrid required.** On-device browsing/search with ordered direct audio tracks for downloading and streaming. |
+| **[GoldenAudiobooks](docs/goldenaudiobooks.md)** | Audiobooks | **No debrid required.** On-device browsing/search with ordered direct audio downloads for offline listening. |
 | **[AudioBookBay](docs/audiobookbay.md)** | Audiobooks | On-device search, release details and optional discovery shelves; **Debrid required** for downloads. |
 | **[Knaben Audiobooks](docs/knaben-audiobooks.md)** | Audiobooks | Audiobook-only API search, optional discovery shelves, and release availability counts; **Debrid required** for downloads. |
 | **[The Pirate Bay Audiobooks](docs/thepiratebay-audiobooks.md)** | Audiobooks | Audiobook-only search with release sizes and availability counts; **Debrid required** for downloads. |
@@ -57,9 +57,11 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 
 ### Audiobook extensions
 
-GoldenAudiobooks offers direct audio downloads and streaming: **no debrid account
-is required**. Its player and download features need an audiobook-capable Cinder
-build (manifest minimum `1.2.4`). Availability depends on the website's audio hosts.
+GoldenAudiobooks offers direct audio downloads for offline listening: **no debrid
+account is required**. Downloads need an audiobook-capable Cinder build (manifest
+minimum `1.2.4`). Version `0.1.2-cinder` disables online Listen in Cinder builds
+that support the optional `audioStreaming` capability. Older builds ignore that
+flag; use Download there. Availability depends on the website's audio hosts.
 
 AudioBookBay, Knaben Audiobooks, and The Pirate Bay Audiobooks require an
 audiobook-capable Cinder build (manifest minimum `1.2.4`) and a connected debrid
