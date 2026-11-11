@@ -61,3 +61,10 @@ release IDs, settings and debrid handoff are unchanged. Add or refresh the
 refresh the private repository if it is installed, then update this extension
 without uninstalling it. The old private script URL remains available for cached
 manifests and older installations.
+
+
+## Debrid label update (2026-11-11)
+
+Version `0.1.3-cinder` explicitly labels the extension as requiring
+a connected debrid service. Only display metadata changed; search, resolution,
+settings and download behavior are unchanged.

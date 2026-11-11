@@ -13,9 +13,27 @@
     ],
     "extensions":  [
                        {
+                           "id": "goldenaudiobooks",
+                           "name": "GoldenAudiobooks",
+                           "version": "0.1.1-cinder",
+                           "description": "Browse audiobooks and download or stream their ordered audio tracks directly.",
+                           "language": "English",
+                           "contentType": "audiobooks",
+                           "contentTypes": ["audiobook"],
+                           "excludeFromDefaultMetadataProviders": true,
+                           "debridSupport": "none",
+                           "debridDescription": "No debrid required. Direct downloads and streaming.",
+                           "browser": {
+                               "startUrl": "https://goldenaudiobooks.com/",
+                               "userAgent": "desktop"
+                           },
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/goldenaudiobooks.js",
+                           "minCinderVersion": "1.2.4"
+                       },
+                       {
                            "id": "thepiratebay-audiobooks",
                            "name": "The Pirate Bay Audiobooks",
-                           "version": "0.1.3-cinder",
+                           "version": "0.1.4-cinder",
                            "description": "Find audiobook releases and download them through your connected debrid service.",
                            "language": "Multilingual",
                            "contentType": "audiobooks",
@@ -24,14 +42,14 @@
                            ],
                            "excludeFromDefaultMetadataProviders": true,
                            "debridSupport": "required",
-                           "debridDescription": "Audiobook magnets are handled by your connected Cinder debrid service.",
+                           "debridDescription": "Requires a connected debrid service.",
                            "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/thepiratebay-audiobooks.js",
                            "minCinderVersion": "1.2.4"
                        },
                        {
                            "id": "audiobookbay",
                            "name": "AudioBookBay",
-                           "version": "0.1.4-cinder",
+                           "version": "0.1.5-cinder",
                            "description": "Search audiobook releases and resolve their torrents through a connected debrid service.",
                            "language": "Multilingual",
                            "contentType": "audiobooks",
@@ -40,7 +58,7 @@
                            ],
                            "excludeFromDefaultMetadataProviders": true,
                            "debridSupport": "required",
-                           "debridDescription": "Uses torrent magnets with a connected Cinder debrid service. Requires an audiobook-capable Cinder build for playback.",
+                           "debridDescription": "Requires a connected debrid service.",
                            "browser": {
                                "startUrl": "https://audiobookbay.lu/",
                                "userAgent": "desktop"
@@ -51,14 +69,14 @@
                        {
                            "id": "knaben-audiobooks",
                            "name": "Knaben Audiobooks",
-                           "version": "0.1.2-cinder",
+                           "version": "0.1.3-cinder",
                            "description": "Search audiobook releases using Knaben and your connected debrid service.",
                            "language": "Multilingual",
                            "contentType": "audiobooks",
                            "contentTypes": ["audiobook"],
                            "excludeFromDefaultMetadataProviders": true,
                            "debridSupport": "required",
-                           "debridDescription": "Uses validated magnets with a connected Cinder debrid service. Requires an audiobook-capable Cinder build for playback.",
+                           "debridDescription": "Requires a connected debrid service.",
                            "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/knaben-audiobooks.js",
                            "minCinderVersion": "1.2.4"
                        },

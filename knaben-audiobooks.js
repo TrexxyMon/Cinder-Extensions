@@ -1,10 +1,11 @@
 // Knaben API v2, queried on-device. Remote preparation/downloads belong to Cinder.
 var KnabenAudiobooks = {
-  id: "knaben-audiobooks", name: "Knaben Audiobooks", version: "0.1.2-cinder",
+  id: "knaben-audiobooks", name: "Knaben Audiobooks", version: "0.1.3-cinder",
   icon: "headset-outline", language: "Multilingual",
   description: "Search audiobook releases using Knaben and your connected debrid service.",
   contentType: "audiobooks", contentTypes: ["audiobook"],
   excludeFromDefaultMetadataProviders: true, debridSupport: "required",
+  debridDescription: "Requires a connected debrid service.",
   capabilities: { search: true, searchDownloads: true, discover: true, resolve: true, download: false, manga: false },
   downloadResults: { order: "source", limit: 40 },
   _cache: [], _pending: {}, _nextRequest: 0, _cooldownUntil: 0,

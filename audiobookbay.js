@@ -4,7 +4,7 @@
 var AudioBookBaySource = {
   id: "audiobookbay",
   name: "AudioBookBay",
-  version: "0.1.4-cinder",
+  version: "0.1.5-cinder",
   icon: "headset-outline",
   description: "Search audiobook releases and resolve their torrents through a connected debrid service.",
   language: "Multilingual",
@@ -12,6 +12,7 @@ var AudioBookBaySource = {
   contentTypes: ["audiobook"],
   excludeFromDefaultMetadataProviders: true,
   debridSupport: "required",
+  debridDescription: "Requires a connected debrid service.",
   browser: { startUrl: "https://audiobookbay.lu/", userAgent: "desktop" },
   capabilities: { search: true, searchDownloads: true, discover: true, resolve: true, download: false, manga: false },
   downloadResults: { order: "source", limit: 40 },

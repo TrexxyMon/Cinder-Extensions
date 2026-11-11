@@ -1,6 +1,6 @@
 # The Pirate Bay Audiobooks
 
-Private Cinder extension `thepiratebay-audiobooks`, version `0.1.2-cinder`.
+Public Cinder extension `thepiratebay-audiobooks`.
 
 - Appears in the Audiobooks category and Search Downloads. Ebook results and other audio categories are excluded.
 - Uses the website's public JSON search service directly on the device. No account, supporter key, scraper backend or browser window is required.
@@ -47,3 +47,10 @@ release IDs, settings and debrid handoff are unchanged. Add or refresh the
 refresh the private repository if it is installed, then update this extension
 without uninstalling it. The old private script URL remains available for cached
 manifests and older installations.
+
+
+## Debrid label update (2026-11-11)
+
+Version `0.1.4-cinder` explicitly labels the extension as requiring
+a connected debrid service. Only display metadata changed; search, resolution,
+settings and download behavior are unchanged.
