@@ -6,7 +6,7 @@ Community extension repository for the Cinder ebook reader.
 
 Extensions are JavaScript plugins that add content sources to Cinder. They run in a sandboxed runtime and can:
 
-- Search for books, comics, manga, and other content.
+- Search for books, audiobooks, comics, manga, and other content.
 - Browse/discover sections such as popular, latest, or categories.
 - Resolve direct downloads or debrid links for books/files.
 - Stream manga/comic chapters page-by-page.
@@ -16,6 +16,9 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 
 | Extension | Type | Description |
 |---|---|---|
+| **[AudioBookBay](docs/audiobookbay.md)** | Audiobooks | On-device search, release details and optional discovery shelves; downloads through a connected debrid provider. |
+| **[Knaben Audiobooks](docs/knaben-audiobooks.md)** | Audiobooks | Audiobook-only API search, optional discovery shelves, and release availability counts; downloads through a connected debrid provider. |
+| **[The Pirate Bay Audiobooks](docs/thepiratebay-audiobooks.md)** | Audiobooks | Audiobook-only search with release sizes and availability counts; downloads through a connected debrid provider. |
 | **Asura Scans** | Manga | Read manga, manhwa, and manhua from Asura Scans. |
 | **Atsumaru** | Manga | Read manga, manhwa, manhua, and OEL from Atsumaru. |
 | **MangaDex** | Manga | Search manga from MangaDex.org, a free community-run manga platform. |
@@ -50,6 +53,21 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 | **BatCave** | Comics | Search and discover western comics, browse issue lists, and stream chapter pages. No debrid required. |
 | **Sway Translations** | Web & Light Novels | Search WordPress novel pages for EPUB/PDF downloads. |
 | **BBato** | Manga | Read manga, manhwa, and manhua from BBato. |
+
+### Audiobook extensions
+
+AudioBookBay, Knaben Audiobooks, and The Pirate Bay Audiobooks require an
+audiobook-capable Cinder build (manifest minimum `1.2.4`) and a connected debrid
+provider supporting magnet releases. Cinder handles provider selection, remote
+preparation, track selection, downloads, and playback. These extensions do not
+need their own debrid API keys. An uncached release depends on source availability
+and the selected provider; a result is not a guarantee of a completed download.
+
+These three extensions moved from the private testing repository on November 11,
+2026. Add this repository, refresh both catalogs, and update the installed
+extensions without uninstalling. Their existing extension IDs, release IDs, and
+settings keys remain unchanged. The previous private scripts are retained for
+older cached manifests; new updates are published here.
 
 ### Anna's Archive download method
 
