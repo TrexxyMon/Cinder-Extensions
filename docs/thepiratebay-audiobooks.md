@@ -54,3 +54,17 @@ manifests and older installations.
 Version `0.1.4-cinder` explicitly labels the extension as requiring
 a connected debrid service. Only display metadata changed; search, resolution,
 settings and download behavior are unchanged.
+
+
+## Split catalog-title compatibility (2026-11-11)
+
+Version `0.1.5-cinder` shortens explicit `Work: Series: Book 2` search queries
+to the work title before contacting the source. Ambiguous subtitles and normal
+queries are unchanged. This adds no network requests, new Cinder API requirement,
+or changes to results, release IDs, settings, caching, or debrid resolution.
+
+Installed builds may first try their older, incomplete title variants before
+sending the raw catalog title that this update normalizes. Their existing result
+filter can still hide releases lacking the series words. The companion app fix
+removes that filter error and searches the clean title first; extension updates
+cannot replace an installed app's matching code.

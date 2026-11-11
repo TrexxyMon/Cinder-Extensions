@@ -74,6 +74,13 @@ extensions without uninstalling. Their existing extension IDs, release IDs, and
 settings keys remain unchanged. The previous private scripts are retained for
 older cached manifests; new updates are published here.
 
+The three debrid audiobook extensions also normalize explicit catalog queries
+such as `Work: Series: Book 2 (Unabridged)` before searching, using the existing
+Cinder API. Update them to receive this compatibility fix. Older app versions can
+still filter out some correct short release titles; the accompanying Cinder fix
+corrects that ranking and sends the clean work title first. Source titles and
+download identities remain unchanged.
+
 ### Anna's Archive download method
 
 Direct download remains the default. Set **Download Method → TorBox (no supporter

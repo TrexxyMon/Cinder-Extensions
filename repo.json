@@ -33,7 +33,7 @@
                        {
                            "id": "thepiratebay-audiobooks",
                            "name": "The Pirate Bay Audiobooks",
-                           "version": "0.1.4-cinder",
+                           "version": "0.1.5-cinder",
                            "description": "Find audiobook releases and download them through your connected debrid service.",
                            "language": "Multilingual",
                            "contentType": "audiobooks",
@@ -49,7 +49,7 @@
                        {
                            "id": "audiobookbay",
                            "name": "AudioBookBay",
-                           "version": "0.1.5-cinder",
+                           "version": "0.1.6-cinder",
                            "description": "Search audiobook releases and resolve their torrents through a connected debrid service.",
                            "language": "Multilingual",
                            "contentType": "audiobooks",
@@ -69,7 +69,7 @@
                        {
                            "id": "knaben-audiobooks",
                            "name": "Knaben Audiobooks",
-                           "version": "0.1.3-cinder",
+                           "version": "0.1.4-cinder",
                            "description": "Search audiobook releases using Knaben and your connected debrid service.",
                            "language": "Multilingual",
                            "contentType": "audiobooks",

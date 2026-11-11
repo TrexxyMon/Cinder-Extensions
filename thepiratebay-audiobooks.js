@@ -1,9 +1,57 @@
+// Query-only compatibility for catalogs spelling "Work: Series: Book 2".
+// Preserve ambiguous titles, source result names, IDs, and ordinary direct searches.
+function cinderAudiobookCatalogQuery(query) {
+  var raw = typeof query === "string" ? query : "";
+  if (raw.length > 2048) return raw;
+  var value = raw.replace(/\s+/g, " ").trim(), stack = [], parts = [], start = 0;
+  var decoration = /^(?:(?:unabridged|abridged)(?: audio\s?book)?|audio\s?book|dramatized adaptation|(?:english|spanish|french|german|italian|portuguese) edition)$/i;
+  // Only balanced annotations are eligible for shortening.
+  for (var i = 0; i < value.length; i++) {
+    var char = value.charAt(i);
+    if (char === "(" || char === "[") stack.push(char);
+    else if (char === ")" || char === "]") {
+      if (stack.pop() !== (char === ")" ? "(" : "[")) return raw;
+    }
+  }
+  if (stack.length) return raw;
+  for (;;) {
+    var group = value.match(/\s*(\(([^()]*)\)|\[([^\[\]]*)\])$/);
+    if (!group || !decoration.test((group[2] || group[3] || "").trim())) break;
+    value = value.slice(0, group.index).trim();
+  }
+  for (var j = 0; j < value.length; j++) {
+    var c = value.charAt(j);
+    if (c === "(" || c === "[") stack.push(c);
+    else if (c === ")" || c === "]") stack.pop();
+    else if (!stack.length) {
+      var separator = value.slice(j).match(/^(?::|[\u2013\u2014]|\s+-{1,2}\s+)/);
+      if (separator) { parts.push({ text: value.slice(start, j).trim(), start: start }); j += separator[0].length - 1; start = j + 1; }
+    }
+  }
+  parts.push({ text: value.slice(start).trim(), start: start });
+  for (var k = 2; k < parts.length; k++) {
+    var label = parts[k].text.match(/^(?:book|volume|vol\.?|tome|livre|libro|livro|volumen|band|teil)\s+(.+)$/i);
+    if (!label) continue;
+    var n = label[1], roman = n.toUpperCase();
+    var valid = /^\d+(?:\.\d+)?(?:st|nd|rd|th)?$/i.test(n)
+      || /^(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[- ](?:one|two|three|four|five|six|seven|eight|nine))?)$/i.test(n)
+      || ((n === roman || n === n.toLowerCase()) && /^[IVXLCDM]+$/.test(roman) && /^M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/.test(roman));
+    if (!valid || !parts[k - 1].text || decoration.test(parts[k - 1].text)) continue;
+    if (!parts.slice(k + 1).every(function (part) { return decoration.test(part.text); })) continue;
+    // Several numbered prefixes are ambiguous; do not guess which work is intended.
+    if (parts.slice(0, k).some(function (part) { return /(?:\b(?:book|volume|vol\.?|part|tome|livre|libro|livro|volumen|band|teil)\s+|#\s*)[\w.]+\s*$/i.test(part.text); })) continue;
+    var work = value.slice(0, parts[k - 1].start).replace(/\s*(?::|[-\u2013\u2014]{1,2})\s*$/, "").trim();
+    return work.length >= 2 ? work : raw;
+  }
+  return raw;
+}
+
 // Independent Cinder extension. Search and validation run on the device.
 // Only category 102 (Audio books) is accepted; magnets go to Cinder's debrid flow.
 var PirateBayAudiobooks = {
   id: "thepiratebay-audiobooks",
   name: "The Pirate Bay Audiobooks",
-  version: "0.1.4-cinder",
+  version: "0.1.5-cinder",
   icon: "headset-outline",
   description: "Find audiobook releases and download them through your connected debrid service.",
   language: "Multilingual",
@@ -90,7 +138,7 @@ PirateBayAudiobooks.search = async function (query, page) {
   // The upstream API returns one bounded result set, not independently paged results.
   // Cinder's download search starts at zero; its individual-source browser at one.
   if (Number(page) > 1) return [];
-  var q = this._text(query).slice(0, 200);
+  var q = this._text(cinderAudiobookCatalogQuery(query)).slice(0, 200);
   if (!q) return [];
   var self = this, key = "q:" + q, now = Date.now();
   this._cache = this._cache.filter(function (entry) { return entry.until > now; });
