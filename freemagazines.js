@@ -2,7 +2,7 @@ var FreeMagazinesSource = {};
 
 FreeMagazinesSource.id = "freemagazines";
 FreeMagazinesSource.name = "FreeMagazines.top";
-FreeMagazinesSource.version = "1.2.3-cinder";
+FreeMagazinesSource.version = "1.2.4-cinder";
 FreeMagazinesSource.icon = "\uD83D\uDCF0";
 FreeMagazinesSource.description = "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.";
 FreeMagazinesSource.contentType = "magazine";
@@ -316,6 +316,28 @@ FreeMagazinesSource._extractLimeWireUrl = function(html, baseUrl) {
 	for (var j = 0; j < variants.length; j++) {
 		var direct = this._normalizeLimeWireUrl(variants[j], baseUrl);
 		if (direct) return direct;
+	}
+	return "";
+};
+
+FreeMagazinesSource._extractArticleDownloadUrl = function(html, pageUrl) {
+	var doc = cinder.parseHTML(html || "");
+	// Current issues use an ordinary Download PDF anchor (for example to
+	// EasyUpload), without LimeWire URLs or WordPress masked-download keys.
+	// Stay inside the article body so navigation and sidebar ads are not files.
+	var body = doc.querySelector("article .entry-content, .entry-content")
+		|| doc.querySelector("article");
+	if (!body) return "";
+	var links = body.querySelectorAll("a[href]");
+	for (var i = 0; i < links.length; i++) {
+		var label = this._decode(links[i].text());
+		if (!/^download(?:\s+(?:pdf|file|magazine))?(?:\s+now)?$/i.test(label)) continue;
+		var raw = String(links[i].attr("href") || "").trim();
+		if (!raw || raw.charAt(0) === "#") continue;
+		var url = this._absoluteUrl(raw, pageUrl);
+		if (!/^https?:\/\/[^/?#\s]+(?:[/?#]|$)/i.test(url)) continue;
+		if (url.replace(/#.*$/, "") === String(pageUrl || "").replace(/#.*$/, "")) continue;
+		return url;
 	}
 	return "";
 };
@@ -669,7 +691,8 @@ FreeMagazinesSource.resolve = async function(item) {
 	});
 
 	var html = article && article.data ? article.data : "";
-	var downloadUrl = this._extractLimeWireUrl(html, pageUrl);
+	var downloadUrl = this._extractLimeWireUrl(html, pageUrl)
+		|| this._extractArticleDownloadUrl(html, pageUrl);
 	if (!downloadUrl) {
 		downloadUrl = await this._resolveMaskedDownloadUrl(pageUrl, html);
 	}
@@ -685,7 +708,8 @@ FreeMagazinesSource.resolve = async function(item) {
 			}),
 		});
 		html = browserArticle && browserArticle.data ? browserArticle.data : "";
-		downloadUrl = this._extractLimeWireUrl(html, pageUrl);
+		downloadUrl = this._extractLimeWireUrl(html, pageUrl)
+			|| this._extractArticleDownloadUrl(html, pageUrl);
 		if (!downloadUrl) {
 			downloadUrl = await this._resolveMaskedDownloadUrl(pageUrl, html);
 		}
