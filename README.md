@@ -85,6 +85,13 @@ download identities remain unchanged.
 
 ### Anna's Archive download method
 
+Version `2.1.15` improves automatic search recovery. It tries the three official
+mirrors within one deadline, runs the website's browser check automatically when
+needed, and reuses the working browser session. Overlapping searches share that
+check. Manual **Verify Website** remains a fallback if the site requires human
+interaction or refuses the automatic attempt. See [search reliability](docs/annas-archive.md)
+for behavior, validation, and limitations. No new Cinder build is needed.
+
 Direct download remains the default. Set **Download Method → TorBox (no supporter
 key needed)** in the extension's settings to let the TorBox account connected in
 Cinder resolve the book's Anna's Archive page. A personal AA supporter key is not

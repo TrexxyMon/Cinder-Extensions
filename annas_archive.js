@@ -6,7 +6,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.14",
+	version: "2.1.15",
 	icon: "📚",
 	description: "Anna's Archive downloads with on-device search, direct downloads, and optional TorBox resolution.",
 	contentType: "books",
@@ -129,8 +129,24 @@ __cinderExport = {
 	_getBaseUrl: async function() {
 		var pref = await cinder.store.get("preferred_domain");
 		if (["annas-archive.gs", "annas-archive.se", "annas-archive.li"].indexOf(pref) !== -1) pref = null;
-		if (pref) return "https://" + pref;
-		return "https://" + this._BASE_DOMAINS[0];
+		// Preserve the supporter API's explicit rejection of custom hosts.
+		if (pref && this._BASE_DOMAINS.indexOf(pref) === -1) return "https://" + pref;
+		return "https://" + this._domainOrder(pref)[0];
+	},
+
+	_workingDomain: null,
+	_domainOrder: function(preference) {
+		var pref = this._BASE_DOMAINS.indexOf(preference) !== -1 ? preference : this._BASE_DOMAINS[0];
+		var working = this._workingDomain;
+		var first = working && working.preference === pref && working.until > Date.now()
+			&& this._BASE_DOMAINS.indexOf(working.domain) !== -1 ? working.domain : pref;
+		var ordered = first === pref ? [first] : [first, pref];
+		return ordered.concat(this._BASE_DOMAINS.filter(function(domain) { return ordered.indexOf(domain) === -1; }));
+	},
+	_rememberWorkingDomain: function(domain, preference, browser) {
+		if (this._BASE_DOMAINS.indexOf(domain) === -1) return;
+		this._workingDomain = { domain: domain, browser: !!browser, until: Date.now() + 10 * 60 * 1000,
+			preference: this._BASE_DOMAINS.indexOf(preference) !== -1 ? preference : this._BASE_DOMAINS[0] };
 	},
 
 	// Search has a 15s budget in older hosts. Do not let a 30s native request
@@ -138,6 +154,73 @@ __cinderExport = {
 	_SEARCH_BUDGET_MS: 13000,
 	_searchRetryUntil: {},
 	_searchBrowserTask: null,
+	_searchBrowserPath: null,
+	_searchBrowserDomain: null,
+
+	_checkSearchRateLimit: function(response, domain) {
+		var status = Number(response && response.status) || 0;
+		var headers = response && response.headers || {};
+		var retryAfter = null;
+		Object.keys(headers).some(function(key) {
+			if (key.toLowerCase() !== "retry-after") return false;
+			retryAfter = String(headers[key]).trim();
+			return true;
+		});
+		if (status === 429 || (status >= 500 && retryAfter)) {
+			var now = Date.now();
+			var until = /^\d+$/.test(retryAfter || "") ? now + Number(retryAfter) * 1000 : Date.parse(retryAfter);
+			this._searchRetryUntil[domain] = until > now ? until : now + 60000;
+			throw this._searchError("Anna's Archive is limiting requests or temporarily busy. Please wait before retrying.", status);
+		}
+	},
+
+	_fetchSearchBrowser: async function(path, domain, context, maxWait) {
+		var self = this;
+		this._assertSearchActive(context);
+		while (this._searchBrowserTask) {
+			var pending = this._searchBrowserTask;
+			var pendingPath = this._searchBrowserPath;
+			var pendingDomain = this._searchBrowserDomain;
+			var shared;
+			try { shared = await pending; } catch (_) { shared = null; }
+			this._assertSearchActive(context);
+			this._checkSearchRateLimit(shared, pendingDomain);
+			if (!shared || Number(shared.status) !== 200 || !this._isSearchPage(shared.data)) return null;
+			if (pendingPath === path && pendingDomain === domain) return shared;
+			// Another query warmed the session. Load this query in that same
+			// browser normally; never return another title's search results.
+		}
+		if (typeof cinder.fetchBrowser !== "function") return null;
+		var task = Promise.resolve().then(function() {
+			self._assertSearchActive(context);
+			return cinder.fetchBrowser("https://" + domain + path, { browserUserAgent: "mobile", headers: {
+				"X-Cinder-Suppress-Interactive": "1",
+				// Give the normal browser a rendered viewport so iOS does not
+				// throttle a fully offscreen page while its own checks run.
+				"X-Cinder-Visible-Layout": "1",
+				"X-Cinder-Min-Wait-Ms": "500",
+				"X-Cinder-Max-Wait-Ms": String(Math.max(1000, Math.min(maxWait, context.deadline - Date.now() - 250))),
+				"X-Cinder-Wait-For-Selector": 'form[action*="/search"], a[href^="/md5/"]',
+			} });
+		});
+		this._searchBrowserTask = task;
+		this._searchBrowserPath = path;
+		this._searchBrowserDomain = domain;
+		var response;
+		try { response = await task; }
+		catch (_) { response = null; }
+		finally {
+			if (this._searchBrowserTask === task) {
+				this._searchBrowserTask = null;
+				this._searchBrowserPath = null;
+				this._searchBrowserDomain = null;
+			}
+		}
+		this._assertSearchActive(context);
+		this._checkSearchRateLimit(response, domain);
+		if (response && Number(response.status) === 200 && this._isSearchPage(response.data)) return response;
+		return null;
+	},
 
 	_searchError: function(message, status) {
 		var error = new Error(message);
@@ -147,7 +230,7 @@ __cinderExport = {
 	},
 
 	_verificationError: function() {
-		return this._searchError("Anna's Archive requires a browser check. Open extension settings > Verify Website, complete the check, then retry search.", 403);
+		return this._searchError("Anna's Archive's automatic browser check could not complete. Retry search, or open extension settings > Verify Website if the site requires your interaction.", 403);
 	},
 
 	_isSearchChallenge: function(html) {
@@ -180,23 +263,35 @@ __cinderExport = {
 		var context = { signal: signal, deadline: Date.now() + this._SEARCH_BUDGET_MS, expired: false };
 		var work = async function() {
 			var pref = await cinder.store.get("preferred_domain");
-			var domains = self._BASE_DOMAINS.slice();
-			if (domains.indexOf(pref) !== -1) {
-				domains = domains.filter(function(domain) { return domain !== pref; });
-				domains.unshift(pref);
+			var domains = self._domainOrder(pref);
+			// A remembered healthy mirror must not sidestep Retry-After.
+			if (self._BASE_DOMAINS.some(function(domain) { return self._searchRetryUntil[domain] > Date.now(); })) {
+				throw self._searchError("Anna's Archive is limiting requests. Please wait before retrying.", 429);
+			}
+			var browserAttempted = false;
+			var challengedDomain = null;
+			var transportFailureDomain = null;
+			var working = self._workingDomain;
+			if (working && working.browser && working.domain === domains[0] && working.until > Date.now()
+				&& working.preference === (self._BASE_DOMAINS.indexOf(pref) !== -1 ? pref : self._BASE_DOMAINS[0])) {
+				// Reuse the browser session that worked instead of repeating known
+				// native failures on every title/query. The host persists its cookies.
+				browserAttempted = true;
+				var reused = await self._fetchSearchBrowser(path, domains[0], context, 8000);
+				if (reused) { self._rememberWorkingDomain(domains[0], pref, true); return reused; }
+				if (self._workingDomain === working) self._workingDomain = null;
 			}
 			for (var i = 0; i < domains.length; i++) {
 				self._assertSearchActive(context);
 				var domain = domains[i];
-				if (self._searchRetryUntil[domain] > Date.now()) {
-					throw self._searchError("Anna's Archive is limiting requests. Please wait before retrying.", 429);
-				}
-				if (self._searchBrowserTask) throw self._verificationError();
 				var url = "https://" + domain + path;
 				var response;
 				try {
+					// Reserve time for one automatic browser check if every official
+					// mirror requires it; do not spend the whole search on native probes.
+					var nativeBudget = context.deadline - Date.now() - (browserAttempted ? 0 : 6500);
 					response = await cinder.fetch(url, {
-						timeout: Math.min(3500, Math.max(1, context.deadline - Date.now())),
+						timeout: Math.min(3500, Math.max(1, Math.floor(nativeBudget / (domains.length - i)))),
 						signal: signal,
 						headers: {
 							// Match Cinder's visible and background mobile browser session.
@@ -210,54 +305,27 @@ __cinderExport = {
 				self._assertSearchActive(context);
 				var status = Number(response && response.status) || 0;
 				var body = response && response.data;
-				var headers = response && response.headers || {};
-				var retryAfter = null;
-				Object.keys(headers).some(function(key) {
-					if (key.toLowerCase() !== "retry-after") return false;
-					retryAfter = String(headers[key]).trim();
-					return true;
-				});
-				if (status === 429 || (status >= 500 && retryAfter)) {
-					var now = Date.now();
-					var until = /^\d+$/.test(retryAfter || "") ? now + Number(retryAfter) * 1000 : Date.parse(retryAfter);
-					self._searchRetryUntil[domain] = until > now ? until : now + 60000;
-					throw self._searchError("Anna's Archive is limiting requests or temporarily busy. Please wait before retrying.", status);
+				self._checkSearchRateLimit(response, domain);
+				if (status === 200 && self._isSearchPage(body)) {
+					self._rememberWorkingDomain(domain, pref, false);
+					return response;
 				}
-				if (status === 200 && self._isSearchPage(body)) return response;
 				if (status === 401) throw self._searchError("Anna's Archive denied this request. Open extension settings > Verify Website and retry.", 401);
 				if (status === 403 || self._isSearchChallenge(body)) {
-					self._assertSearchActive(context);
-					// Another concurrent query may have started verification while
-					// this query's native request was still running.
-					if (self._searchBrowserTask || typeof cinder.fetchBrowser !== "function") throw self._verificationError();
-					// One normal browser attempt, not one per mirror/query variant.
-					// Explicit verification has no search deadline and saves cookies
-					// through the host's existing, extension-scoped browser session.
-					var task = Promise.resolve().then(function() {
-						self._assertSearchActive(context);
-						return cinder.fetchBrowser(url, { headers: {
-							"X-Cinder-Suppress-Interactive": "1",
-							"X-Cinder-Min-Wait-Ms": "500",
-							"X-Cinder-Max-Wait-Ms": "6000",
-							"X-Cinder-Wait-For-Selector": 'form[action*="/search"], a[href^="/md5/"]',
-						} });
-					});
-					self._searchBrowserTask = task;
-					try {
-						var browserResponse = await task;
-						self._assertSearchActive(context);
-						if (browserResponse && Number(browserResponse.status) === 200 &&
-							self._isSearchPage(browserResponse.data)) return browserResponse;
-					} catch (_) {
-						self._assertSearchActive(context);
-					} finally {
-						if (self._searchBrowserTask === task) self._searchBrowserTask = null;
-					}
-					throw self._verificationError();
+					if (!challengedDomain) challengedDomain = domain;
 				}
-				// Only transport failures or unrecognized/retired hosts try the
-				// next advertised mirror. Never race challenge requests.
+				if (status === 0 && !transportFailureDomain) transportFailureDomain = domain;
+				// Sequential native requests only; never open one browser per mirror.
 			}
+			var browserDomain = challengedDomain || transportFailureDomain;
+			if (browserDomain && !browserAttempted) {
+				var browserResponse = await self._fetchSearchBrowser(path, browserDomain, context, 10000);
+				if (browserResponse) {
+					self._rememberWorkingDomain(browserDomain, pref, true);
+					return browserResponse;
+				}
+			}
+			if (challengedDomain || browserAttempted) throw self._verificationError();
 			throw self._searchError("Anna's Archive search is temporarily unavailable or returned an unrecognized page. Please retry later.");
 		};
 		return new Promise(function(resolve, reject) {
@@ -287,7 +355,7 @@ __cinderExport = {
 				},
 			});
 
-			if (resp.status === 403 || (resp.data && resp.data.indexOf("cf-challenge") !== -1) || (resp.data && resp.data.length < 500 && resp.data.indexOf("challenge") !== -1)) {
+			if (resp.status === 403 || this._isSearchChallenge(resp.data) || (resp.data && resp.data.length < 500 && resp.data.indexOf("challenge") !== -1)) {
 				cinder.log("[AA] Cloudflare detected, falling back to browser fetch for: " + url);
 				return await cinder.fetchBrowser(url, { headers: { "X-Cinder-Suppress-Interactive": "1" } });
 			}
@@ -306,12 +374,7 @@ __cinderExport = {
 
 	_fetchWithFallback: async function(path) {
 		var pref = await cinder.store.get("preferred_domain");
-		var domains = this._BASE_DOMAINS.slice();
-
-		if (domains.indexOf(pref) !== -1) {
-			domains = domains.filter(function(d) { return d !== pref; });
-			domains.unshift(pref);
-		}
+		var domains = this._domainOrder(pref);
 
 		var lastErr = null;
 		for (var i = 0; i < domains.length; i++) {
@@ -319,8 +382,9 @@ __cinderExport = {
 			try {
 				cinder.log("[AA] Trying: " + url);
 				var resp = await this._smartFetch(url);
-				if (resp.status === 200 && resp.data && resp.data.length > 500) {
-					return resp;
+				if (resp.status === 200 && resp.data && resp.data.length > 500 && !this._isSearchChallenge(resp.data)) {
+					this._rememberWorkingDomain(domains[i], pref, this._workingDomain && this._workingDomain.domain === domains[i] && this._workingDomain.browser);
+					return Object.assign({}, resp, { _aaBaseUrl: "https://" + domains[i] });
 				}
 				cinder.warn("[AA] " + domains[i] + " returned status " + resp.status);
 			} catch (err) {
@@ -597,6 +661,9 @@ __cinderExport = {
 			cinder.log("[AA] Libgen CDN didn't win race, waiting for detail page...");
 			detailResp = await detailPromise;
 		}
+		// Relative slow-download paths belong to the mirror that supplied them,
+		// including its verified browser session, not the original failed domain.
+		if (detailResp && detailResp._aaBaseUrl) baseUrl = detailResp._aaBaseUrl;
 
 		// Meanwhile, Libgen might still finish — keep its promise alive
 		// We'll check it again after parsing the detail page
