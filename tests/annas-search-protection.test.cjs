@@ -51,6 +51,92 @@ test('fast search uses one bounded request and preserves result identity', async
   assert.equal(h.browserCalls.length, 0);
 });
 
+test('a challenged search opens one user verification and resumes with its returned page', async t => {
+  const h = harness(t, { response: { status: 403, data: challenge } });
+  const verification = [];
+  h.cinder.verifyWebsite = async (url, options) => { verification.push({ url, options }); return ok(results); };
+  assert.equal((await h.source.search('fixture', 0))[0].id, md5);
+  assert.equal(verification.length, 1);
+  assert.match(verification[0].url, /\/search\?q=fixture/);
+  assert.match(verification[0].options.successSelector, /\/search/);
+  assert.equal(verification[0].options.browserUserAgent, 'mobile');
+  assert.equal(h.browserCalls.length, 0);
+  assert.equal(h.source._workingDomain.browser, true);
+  await h.source.search('next title', 0);
+  assert.equal(verification.length, 1, 'reuse the saved browser session');
+  assert.match(h.browserCalls[0].url, /q=next%20title/);
+});
+
+test('automatic verification is enabled by default and can be turned off in extension settings', async t => {
+  const h = harness(t, { response: { status: 403, data: challenge }, browser: ok(challenge) });
+  const toggle = h.source.getSettings().find(setting => setting.id === 'auto_verify_website');
+  assert.equal(toggle.type, 'toggle');
+  assert.equal(toggle.defaultValue, 'true');
+  let calls = 0;
+  h.cinder.verifyWebsite = async () => { calls++; return ok(results); };
+  h.cinder.store.get = async key => key === 'auto_verify_website' ? 'false' : undefined;
+  await assert.rejects(h.source.search('fixture', 0), /Verify Website/);
+  assert.equal(calls, 0);
+  h.cinder.store.get = async key => key === 'auto_verify_website' ? 'true' : undefined;
+  assert.equal((await h.source.search('fixture', 0)).length, 1);
+  assert.equal(calls, 1);
+});
+
+test('human verification time does not consume the extension search deadline', async t => {
+  const h = harness(t, { response: { status: 403, data: challenge } });
+  h.source._SEARCH_BUDGET_MS = 25;
+  h.cinder.verifyWebsite = async () => { await new Promise(resolve => setTimeout(resolve, 80)); return ok(empty); };
+  assert.equal((await h.source.search('fixture', 0)).length, 0);
+});
+
+test('cancelling verification stops the search without opening another mirror', async t => {
+  const h = harness(t, { response: { status: 403, data: challenge } });
+  const controller = new AbortController();
+  let count = 0;
+  h.cinder.verifyWebsite = async (_url, options) => {
+    count++;
+    assert.equal(options.signal, controller.signal);
+    throw new Error('Website verification cancelled');
+  };
+  await assert.rejects(h.source.search('fixture', 0, undefined, { signal: controller.signal }), error => error.stopSearch && /cancelled/.test(error.message));
+  assert.equal(count, 1);
+  assert.equal(h.browserCalls.length, 0);
+});
+
+test('healthy and rate-limited sources never open the user verification window', async t => {
+  const healthy = harness(t);
+  healthy.cinder.verifyWebsite = async () => { throw Error('Unexpected verification'); };
+  assert.equal((await healthy.source.search('fixture', 0)).length, 1);
+  const limited = harness(t, { response: { status: 429, data: '', headers: { 'Retry-After': '60' } } });
+  limited.cinder.verifyWebsite = healthy.cinder.verifyWebsite;
+  await assert.rejects(limited.source.search('fixture', 0), error => error.status === 429);
+});
+
+test('a challenge found only inside the browser can request user verification', async t => {
+  const h = harness(t, { response: { status: 0 }, browser: ok(challenge) });
+  let count = 0;
+  h.cinder.verifyWebsite = async () => { count++; return ok(results); };
+  assert.equal((await h.source.search('fixture', 0)).length, 1);
+  assert.equal(count, 1);
+  assert.equal(h.browserCalls.length, 1);
+});
+
+test('an expired saved browser session prompts once and accepts real empty results', async t => {
+  const h = harness(t, { response: { status: 403, data: challenge }, browser: ok(challenge) });
+  h.source._rememberWorkingDomain('annas-archive.gd', undefined, true);
+  let count = 0;
+  h.cinder.verifyWebsite = async () => { count++; return ok(empty); };
+  assert.equal((await h.source.search('fixture', 0)).length, 0);
+  assert.equal(count, 1);
+  assert.equal(h.calls.length, 0);
+});
+
+test('verification returning another challenge is never accepted as empty results', async t => {
+  const h = harness(t, { response: { status: 403, data: challenge } });
+  h.cinder.verifyWebsite = async () => ok(challenge);
+  await assert.rejects(h.source.search('fixture', 0), error => error.status === 403 && error.stopSearch);
+});
+
 for (const status of [200, 403, 503]) {
   test(`DDoS-Guard challenge (HTTP ${status}) is handled through the existing browser`, async t => {
     const h = harness(t, { response: { status, data: challenge } });

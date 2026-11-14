@@ -6,7 +6,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.15",
+	version: "2.1.16",
 	icon: "📚",
 	description: "Anna's Archive downloads with on-device search, direct downloads, and optional TorBox resolution.",
 	contentType: "books",
@@ -31,6 +31,13 @@ __cinderExport = {
 				type: "webview",
 				url: "https://annas-archive.gd/search?q=test",
 				subtitle: "Complete the browser check, then return and retry search.",
+			},
+			{
+				id: "auto_verify_website",
+				label: "Automatically Open Verification",
+				type: "toggle",
+				defaultValue: "true",
+				description: "Open the website check when a search needs it, then save the session and continue automatically. Turn off to use Verify Website manually.",
 			},
 			{
 				id: "aa_supporter_key",
@@ -185,6 +192,7 @@ __cinderExport = {
 			try { shared = await pending; } catch (_) { shared = null; }
 			this._assertSearchActive(context);
 			this._checkSearchRateLimit(shared, pendingDomain);
+			if (shared && (Number(shared.status) === 403 || this._isSearchChallenge(shared.data))) context.challengeDomain = pendingDomain;
 			if (!shared || Number(shared.status) !== 200 || !this._isSearchPage(shared.data)) return null;
 			if (pendingPath === path && pendingDomain === domain) return shared;
 			// Another query warmed the session. Load this query in that same
@@ -193,7 +201,7 @@ __cinderExport = {
 		if (typeof cinder.fetchBrowser !== "function") return null;
 		var task = Promise.resolve().then(function() {
 			self._assertSearchActive(context);
-			return cinder.fetchBrowser("https://" + domain + path, { browserUserAgent: "mobile", headers: {
+			return cinder.fetchBrowser("https://" + domain + path, { browserUserAgent: "mobile", signal: context.signal, headers: {
 				"X-Cinder-Suppress-Interactive": "1",
 				// Give the normal browser a rendered viewport so iOS does not
 				// throttle a fully offscreen page while its own checks run.
@@ -218,8 +226,32 @@ __cinderExport = {
 		}
 		this._assertSearchActive(context);
 		this._checkSearchRateLimit(response, domain);
+		if (response && (Number(response.status) === 403 || this._isSearchChallenge(response.data))) context.challengeDomain = domain;
 		if (response && Number(response.status) === 200 && this._isSearchPage(response.data)) return response;
 		return null;
+	},
+
+	_verifySearchPage: async function(path, domain, context) {
+		this._assertSearchActive(context);
+		var startedAt = Date.now();
+		context.verifying = true;
+		var response;
+		try {
+			response = await cinder.verifyWebsite("https://" + domain + path, {
+				browserUserAgent: "mobile",
+				successSelector: 'form[action$="/search"], a[href^="/md5/"]',
+				signal: context.signal,
+			});
+		} catch (error) {
+			throw this._searchError(error && error.message || "Website verification did not finish.", error && error.status);
+		} finally {
+			context.deadline += Math.max(0, Date.now() - startedAt);
+			context.verifying = false;
+		}
+		this._assertSearchActive(context);
+		this._checkSearchRateLimit(response, domain);
+		if (response && Number(response.status) === 200 && this._isSearchPage(response.data)) return response;
+		throw this._verificationError();
 	},
 
 	_searchError: function(message, status) {
@@ -263,6 +295,8 @@ __cinderExport = {
 		var context = { signal: signal, deadline: Date.now() + this._SEARCH_BUDGET_MS, expired: false };
 		var work = async function() {
 			var pref = await cinder.store.get("preferred_domain");
+			var autoVerify = await cinder.store.get("auto_verify_website");
+			var canVerify = autoVerify !== "false" && autoVerify !== false && typeof cinder.verifyWebsite === "function";
 			var domains = self._domainOrder(pref);
 			// A remembered healthy mirror must not sidestep Retry-After.
 			if (self._BASE_DOMAINS.some(function(domain) { return self._searchRetryUntil[domain] > Date.now(); })) {
@@ -280,6 +314,11 @@ __cinderExport = {
 				var reused = await self._fetchSearchBrowser(path, domains[0], context, 8000);
 				if (reused) { self._rememberWorkingDomain(domains[0], pref, true); return reused; }
 				if (self._workingDomain === working) self._workingDomain = null;
+				if (context.challengeDomain && canVerify) {
+					var renewed = await self._verifySearchPage(path, context.challengeDomain, context);
+					self._rememberWorkingDomain(context.challengeDomain, pref, true);
+					return renewed;
+				}
 			}
 			for (var i = 0; i < domains.length; i++) {
 				self._assertSearchActive(context);
@@ -318,6 +357,11 @@ __cinderExport = {
 				// Sequential native requests only; never open one browser per mirror.
 			}
 			var browserDomain = challengedDomain || transportFailureDomain;
+			if (challengedDomain && canVerify) {
+				var verified = await self._verifySearchPage(path, challengedDomain, context);
+				self._rememberWorkingDomain(challengedDomain, pref, true);
+				return verified;
+			}
 			if (browserDomain && !browserAttempted) {
 				var browserResponse = await self._fetchSearchBrowser(path, browserDomain, context, 10000);
 				if (browserResponse) {
@@ -325,18 +369,27 @@ __cinderExport = {
 					return browserResponse;
 				}
 			}
+			if (context.challengeDomain && canVerify) {
+				var recovered = await self._verifySearchPage(path, context.challengeDomain, context);
+				self._rememberWorkingDomain(context.challengeDomain, pref, true);
+				return recovered;
+			}
 			if (challengedDomain || browserAttempted) throw self._verificationError();
 			throw self._searchError("Anna's Archive search is temporarily unavailable or returned an unrecognized page. Please retry later.");
 		};
 		return new Promise(function(resolve, reject) {
 			var settled = false;
 			// Older extension sandboxes expose setTimeout, but not clearTimeout.
-			setTimeout(function() {
+			var checkDeadline = function() {
 				if (settled) return;
+				if (context.verifying) { setTimeout(checkDeadline, 1000); return; }
+				var remaining = context.deadline - Date.now();
+				if (remaining > 0) { setTimeout(checkDeadline, remaining); return; }
 				settled = true;
 				context.expired = true;
 				reject(self._searchError("Anna's Archive search timed out. Open extension settings > Verify Website if a browser check is required."));
-			}, self._SEARCH_BUDGET_MS);
+			};
+			setTimeout(checkDeadline, self._SEARCH_BUDGET_MS);
 			work().then(function(result) {
 				if (!settled) { settled = true; resolve(result); }
 			}, function(error) {
