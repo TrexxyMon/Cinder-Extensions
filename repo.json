@@ -274,11 +274,11 @@
                        {
                            "id":  "downmagaz",
                            "name":  "DownMagaz",
-                           "version":  "4.0.14",
+                           "version":  "4.0.15",
                            "description":  "Search and browse DownMagaz on device, then resolve issue links for PDF download.",
                            "language":  "Multilingual",
                            "contentType":  "magazine",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/downmagaz_device.js?v=4.0.14",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@4cf9b1c65312a37f6d8fc34280a535557da82fa8/downmagaz_device.js",
                            "minCinderVersion":  "2.0.0",
                            "debridSupport":  "required",
                            "debridDescription":  "Requires Debrid-Link for the current Downup host links.",
