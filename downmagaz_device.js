@@ -7,7 +7,7 @@ var DownMagazSource = {};
 
 DownMagazSource.id = "downmagaz";
 DownMagazSource.name = "DownMagaz";
-DownMagazSource.version = "4.0.14";
+DownMagazSource.version = "4.0.15";
 DownMagazSource.icon = "\uD83D\uDCF0";
 DownMagazSource.description =
   "Search and browse DownMagaz on device, then resolve issue links for PDF download.";
@@ -271,6 +271,45 @@ DownMagazSource._looksLikeDirectFileUrl = function(url) {
   return /\.(pdf|epub|cbz|cbr)(?:$|[?#])/i.test(String(url));
 };
 
+DownMagazSource._isDownupLink = function(url) {
+  return /^https?:\/\/(?:www\.)?(?:downup\.me|dwp\.la)(?:[/?#]|$)/i.test(String(url || ""));
+};
+
+DownMagazSource._isDownupShortcut = function(url) {
+  return /^https?:\/\/(?:www\.)?dwp\.la\/d\/[a-z0-9]+(?:[/?#]|$)/i.test(String(url || ""));
+};
+
+DownMagazSource._resolveDownupShortcut = async function(url, referer) {
+  if (!this._isDownupShortcut(url)) return url;
+  function isFilePage(candidate) {
+    return /^https?:\/\/(?:www\.)?downup\.me\/[a-z0-9]{12}(?:\/[^?#]*)?(?:[?#].*)?$/i.test(String(candidate || ""));
+  }
+  try {
+    // HEAD on dwp.la redirects to the homepage; GET reaches the actual file.
+    var res = await cinder.fetch(url, {
+      method: "GET",
+      headers: { "Referer": referer || this.BASE_URL + "/" },
+      timeout: 8000
+    });
+    if (!res || res.status < 200 || res.status >= 300) return url;
+    if (isFilePage(res.url)) return res.url;
+    if (res.url && !this._isDownupLink(res.url)) return url;
+
+    // Older clients may omit the final URL. Downup's download forms identify
+    // the same file page without submitting a form or starting a download.
+    var forms = cinder.parseHTML(res.data || "").querySelectorAll("form[action]");
+    var filePages = [];
+    for (var i = 0; i < forms.length; i++) {
+      var action = forms[i].attr("action") || "";
+      if (isFilePage(action) && filePages.indexOf(action) < 0) filePages.push(action);
+    }
+    if (filePages.length === 1) return filePages[0];
+  } catch (e) {
+    cinder.warn("Downup shortcut resolution failed; retaining original link:", String(e));
+  }
+  return url;
+};
+
 DownMagazSource._probeDirectFileUrl = async function(url, referer) {
   if (!url) return false;
   try {
@@ -282,7 +321,8 @@ DownMagazSource._probeDirectFileUrl = async function(url, referer) {
       timeout: 20000
     });
 
-    var headers = (res && res.headers) || {};
+    if (!res || res.status < 200 || res.status >= 300) return false;
+    var headers = res.headers || {};
     var contentType = String(headers["content-type"] || headers["Content-Type"] || "").toLowerCase();
     var disposition = String(headers["content-disposition"] || headers["Content-Disposition"] || "").toLowerCase();
 
@@ -306,7 +346,7 @@ DownMagazSource._rankLinks = function(links) {
     var lower = String(link || "").toLowerCase();
     var score = 0;
 
-    if (lower.indexOf("downup.me") >= 0) score += 1000;
+    if (DownMagazSource._isDownupLink(link)) score += 1000;
     if (lower.indexOf("pixeldrain") >= 0) score += 300;
     if (lower.indexOf("mediafire") >= 0) score += 250;
     if (lower.indexOf("gofile") >= 0) score += 220;
@@ -332,7 +372,7 @@ DownMagazSource._debridLinkCandidates = function(links) {
     return /^https?:\/\//i.test(String(link || ""));
   });
   var downup = ranked.filter(function(link) {
-    return String(link || "").toLowerCase().indexOf("downup.me") >= 0;
+    return DownMagazSource._isDownupLink(link);
   });
   if (downup.length > 0) return downup;
   return ranked.filter(function(link) {
@@ -414,6 +454,19 @@ DownMagazSource.resolve = async function(item) {
     throw new Error("No downloadable link found on the issue page.");
   }
 
+  var wasShortcut = this._isDownupShortcut(chosen);
+  if (wasShortcut) {
+    var resolvedLink = await this._resolveDownupShortcut(chosen, pageUrl);
+    if (resolvedLink !== chosen) {
+      // Keep the original shortcut as a fallback if the provider rejects the
+      // canonical file URL. Do not add requests to existing Downup links.
+      rankedLinks = [resolvedLink].concat(rankedLinks.filter(function(link) {
+        return link !== resolvedLink;
+      }));
+      chosen = resolvedLink;
+    }
+  }
+
   var lower = chosen.toLowerCase();
   var ext = "pdf";
   if (lower.indexOf(".cbz") >= 0) ext = "cbz";
@@ -421,9 +474,9 @@ DownMagazSource.resolve = async function(item) {
   else if (lower.indexOf(".epub") >= 0) ext = "epub";
 
   var directUrl = "";
-  if (this._looksLikeDirectFileUrl(chosen)) {
+  if (!wasShortcut && this._looksLikeDirectFileUrl(chosen)) {
     directUrl = chosen;
-  } else if (await this._probeDirectFileUrl(chosen, pageUrl)) {
+  } else if (!wasShortcut && await this._probeDirectFileUrl(chosen, pageUrl)) {
     directUrl = chosen;
   }
 
