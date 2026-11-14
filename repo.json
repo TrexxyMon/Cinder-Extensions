@@ -486,11 +486,11 @@
                        {
                            "id":  "annas-archive-slow",
                            "name":  "Anna\u0027s Archive",
-                           "version":  "2.1.15",
+                           "version":  "2.1.16",
                            "description":  "Anna\u0027s Archive downloads with on-device search, direct downloads, and optional TorBox resolution.",
                            "language":  "English",
                            "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@00404972d7aac559f9cd3fa649f8bbd8dd543912/annas_archive.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@69c03f97ea96676bd552a1ede34a1b07e3e44625/annas_archive.js",
                            "browser":  {
                                            "startUrl":  "https://annas-archive.gd/search?q=test",
                                            "userAgent":  "mobile"
