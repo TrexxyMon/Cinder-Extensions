@@ -2,6 +2,36 @@
 
 DownMagaz requires Debrid-Link for its current Downup file-host links.
 
+## 4.0.16: recover file identity when redirect metadata is unavailable
+
+The 4.0.15 fallback assumed that Downup's forms contained absolute action URLs.
+The live Commando #6000 page instead has empty form actions, with the file ID and
+filename in hidden inputs. Replaying that exact page with a missing final URL,
+or with the original shortcut as the response URL, reproduced the old shortcut
+being submitted to Debrid-Link. A successful desktop redirect check did not
+exercise this case.
+
+The resolver now recognizes those download forms, including omitted and relative
+actions, and recovers the file page from their validated identity. Free/premium
+forms for the same file are deduplicated by file ID. Conflicting IDs, unrelated
+form targets, login forms, and untrusted redirects cannot choose a different
+file. No form is submitted, and no network request is added.
+
+Validation on November 14, 2026:
+
+- All 31 focused tests passed using Cinder's HTML parser.
+- The public extension suite passed: 533 passed, 2 optional-fixture skips.
+- Three live issue pages were checked with final, original, and omitted response
+  URLs. All nine fixed results matched Debrid-Link's public Downup URL pattern
+  and reopened HTTP 200 pages containing the same file ID and filename. Version
+  4.0.15 failed the six original/omitted URL cases.
+- Authenticated Debrid-Link link generation and installed-device downloads are
+  still unverified. This fixes a reproduced resolver defect, not a demonstrated
+  provider-side failure. The app was unchanged; no Expo build was required.
+
+After updating, select the issue again from search. Retrying an existing failed
+download reuses its saved URL and does not rerun the updated extension resolver.
+
 ## 4.0.15: resolve Downup shortcuts before debrid submission
 
 Issue pages can use `https://dwp.la/d/<short-id>` instead of a full Downup file

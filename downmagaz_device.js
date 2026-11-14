@@ -7,7 +7,7 @@ var DownMagazSource = {};
 
 DownMagazSource.id = "downmagaz";
 DownMagazSource.name = "DownMagaz";
-DownMagazSource.version = "4.0.15";
+DownMagazSource.version = "4.0.16";
 DownMagazSource.icon = "\uD83D\uDCF0";
 DownMagazSource.description =
   "Search and browse DownMagaz on device, then resolve issue links for PDF download.";
@@ -295,13 +295,38 @@ DownMagazSource._resolveDownupShortcut = async function(url, referer) {
     if (isFilePage(res.url)) return res.url;
     if (res.url && !this._isDownupLink(res.url)) return url;
 
-    // Older clients may omit the final URL. Downup's download forms identify
-    // the same file page without submitting a form or starting a download.
-    var forms = cinder.parseHTML(res.data || "").querySelectorAll("form[action]");
+    // Some clients omit the redirect URL or report the original shortcut.
+    // Current Downup forms have empty actions and carry the file identity in
+    // hidden inputs. Read those inputs without submitting either download form.
+    var forms = cinder.parseHTML(res.data || "").querySelectorAll("form");
     var filePages = [];
+    var fileIds = [];
+    function addFilePage(candidate) {
+      if (!isFilePage(candidate)) return;
+      var id = candidate.match(/^https?:\/\/(?:www\.)?downup\.me\/([a-z0-9]{12})/i)[1];
+      if (fileIds.indexOf(id) < 0) {
+        fileIds.push(id);
+        filePages.push(candidate);
+      }
+    }
+    var formBase = /^https?:\/\/(?:www\.)?downup\.me(?:[/?#]|$)/i.test(res.url || "")
+      ? res.url : "https://downup.me/";
     for (var i = 0; i < forms.length; i++) {
-      var action = forms[i].attr("action") || "";
-      if (isFilePage(action) && filePages.indexOf(action) < 0) filePages.push(action);
+      var form = forms[i];
+      var action = String(form.attr("action") || "").trim();
+      if (action && action !== "." && action !== "./") {
+        var actionUrl = cinder.resolveUrl(action, formBase);
+        if (!isFilePage(actionUrl)) continue;
+        addFilePage(actionUrl);
+      }
+      var op = form.querySelector('input[name="op"]');
+      var fileId = form.querySelector('input[name="id"]');
+      if (!op || !/^download[12]$/.test(op.attr("value") || "") || !fileId) continue;
+      var id = String(fileId.attr("value") || "").trim();
+      if (!/^[a-z0-9]{12}$/i.test(id)) continue;
+      var fileName = form.querySelector('input[name="fname"]');
+      var name = fileName ? String(fileName.attr("value") || "").trim() : "";
+      addFilePage("https://downup.me/" + id + (name ? "/" + encodeURIComponent(name) + ".html" : ""));
     }
     if (filePages.length === 1) return filePages[0];
   } catch (e) {

@@ -19,6 +19,17 @@ const script = fs.readFileSync(process.env.DOWNMAGAZ_SOURCE || path.join(root, '
 const page = 'https://downmagaz.net/comics_magazine/487698-commando-no-6000.html';
 const shortcut = 'https://dwp.la/d/hLZ';
 const canonical = 'https://downup.me/ct75flrfkwsa/Commando_-_No._6000_downmagaz.net.pdf.html';
+const fileName = 'Commando - No. 6000_downmagaz.net.pdf';
+const formCanonical = 'https://downup.me/ct75flrfkwsa/' + encodeURIComponent(fileName) + '.html';
+// Reduced from the live Commando 6000 Downup page, November 14, 2026.
+// Both free and premium forms have empty actions; the file identity is in inputs.
+function downloadForm({ action = '', id = 'ct75flrfkwsa', name = fileName, op = 'download1' } = {}) {
+  return '<form method="POST"' + (action === null ? '' : ' action="' + action + '"') + '>'
+    + '<input type="hidden" name="op" value="' + op + '">'
+    + '<input type="hidden" name="id" value="' + id + '">'
+    + '<input type="hidden" name="fname" value="' + name + '">'
+    + '<button name="method_free" value="1">Free Download</button></form>';
+}
 const item = Object.freeze({ title: 'Commando', url: page, extra: Object.freeze({ articleUrl: page }) });
 const ok = (data, extra = {}) => ({ status: 200, data, headers: {}, ...extra });
 const article = (links = [shortcut]) => '<html><head><meta property="og:title" content="Commando - No. 6000"></head>'
@@ -69,6 +80,55 @@ test('old clients without a final response URL use the matching download forms',
   assert.equal((await h.source.resolve(item)).debridLink, canonical);
   assert.equal(h.calls.length, 2);
 });
+
+for (const [label, url] of [['missing', undefined], ['original shortcut', shortcut]]) {
+  test('actual empty-action form resolves when final URL is ' + label, async () => {
+    const forms = downloadForm() + downloadForm().replace(/method_free/g, 'method_premium');
+    const h = load({ host: () => ok(forms, { url }) });
+    const result = await h.source.resolve(item);
+    assert.equal(result.debridLink, formCanonical);
+    assert.deepEqual(plain(result.debridLinks), [formCanonical, shortcut]);
+    assert.equal(result.url, undefined);
+    assert.equal(result.fileName, 'Commando - No. 6000.pdf');
+    assert.equal(h.calls.length, 2, 'No form submission, HEAD probe, or extra request');
+    assert.equal(h.calls[1].request.method, 'GET');
+  });
+}
+
+for (const action of [null, '.', './', '/ct75flrfkwsa/Commando.pdf.html']) {
+  test('accepts a download form with omitted or relative action: ' + action, async () => {
+    const h = load({ host: () => ok(downloadForm({ action })) });
+    const result = await h.source.resolve(item);
+    assert.match(result.debridLink, /^https:\/\/downup\.me\/ct75flrfkwsa\//);
+    assert.equal(result.url, undefined);
+  });
+}
+
+test('keeps non-PDF filenames discoverable from the recovered form URL', async () => {
+  const h = load({ host: () => ok(downloadForm({ name: 'Issue & special.cbz' })) });
+  const result = await h.source.resolve(item);
+  assert.equal(result.debridLink, 'https://downup.me/ct75flrfkwsa/Issue%20%26%20special.cbz.html');
+  assert.equal(result.fileName, 'Commando - No. 6000.cbz');
+});
+
+test('treats absolute-action and empty-action forms for the same file as one candidate', async () => {
+  const h = load({ host: () => ok(downloadForm({ action: canonical }) + downloadForm()) });
+  assert.equal((await h.source.resolve(item)).debridLink, canonical);
+});
+
+for (const [label, data] of [
+  ['unrelated login form', downloadForm({ op: 'login' })],
+  ['malformed file id', downloadForm({ id: '../not-a-file' })],
+  ['unrelated form target', downloadForm({ action: 'https://other.example/upload' })],
+  ['different form file IDs', downloadForm() + downloadForm({ id: 'abcdefghijkl' })],
+  ['conflicting action and input IDs', downloadForm({ action: canonical, id: 'abcdefghijkl' })],
+  ['file inputs outside a form', '<input name="op" value="download1"><input name="id" value="ct75flrfkwsa">'],
+]) {
+  test('does not infer a file URL from ' + label, async () => {
+    const h = load({ host: () => ok(data) });
+    assert.equal((await h.source.resolve(item)).debridLink, shortcut);
+  });
+}
 
 test('canonical URL already present in the article is not duplicated', async () => {
   const h = load({ links: [shortcut, canonical] });
