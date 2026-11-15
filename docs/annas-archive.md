@@ -1,7 +1,8 @@
 # Anna's Archive search reliability
 
-Version `2.1.16` adds a user verification handoff for protected searches, including
-Search Downloads and Test Connection, on Cinder builds exposing `verifyWebsite`.
+Version `2.1.17` fixes a missing verification handoff when native requests fail
+without returning challenge HTML, including Search Downloads and Test Connection.
+It builds on the `2.1.16` user verification flow on hosts exposing `verifyWebsite`.
 
 - **Automatically Open Verification** is enabled by default in extension settings.
   When a search needs an interactive check, Cinder opens the website. Solve it;
@@ -16,7 +17,7 @@ Search Downloads and Test Connection, on Cinder builds exposing `verifyWebsite`.
 - Successful sessions are reused. An expired session can request verification
   again; the window closes only after actual search access, not a puzzle callback.
 
-Refresh the extension catalogue and update **Anna's Archive** to `2.1.16`.
+Refresh the extension catalogue and update **Anna's Archive** to `2.1.17`.
 **Automatic opening requires the corresponding Cinder app update as well.**
 There is no paid service, puzzle solver, or new native dependency.
 
@@ -24,16 +25,19 @@ The existing mirror and background recovery behavior remains:
 
 - Try the current official mirrors sequentially before treating one mirror's
   challenge as a failure of the whole source. No new or unofficial domains are added.
-- If native requests cannot reach search, let the website run its own browser
-  check through Cinder's normal mobile WebView. A confirmed challenge can use the
-  visible handoff above when supported and enabled; otherwise the background
-  check remains silent. Neither path simulates CAPTCHA answers.
+- If native requests cannot reach search, use the visible handoff when supported
+  and enabled, even when Android exposes no challenge HTML. Do not exhaust the
+  search deadline in an invisible browser first. Older hosts and the off setting
+  retain a silent background check. Neither path simulates CAPTCHA answers.
 - Reserve time for this browser attempt, allowing up to ten seconds within the
   existing thirteen-second search deadline. Valid results can finish earlier.
 - Remember a successful mirror and transport for ten minutes in the loaded
   extension. When a browser session works, reuse it for subsequent queries instead
   of repeating failed native requests. Cinder handles cookie persistence. An
   explicit preferred-domain change takes priority over the remembered hint.
+- Give a remembered browser warmup an explicit timeout with time reserved for
+  verification. If that warmup fails or returns no usable page, renew through
+  the visible handoff. Honoring that timeout requires the accompanying app fix.
 - Concurrent searches wait for automatic verification already in progress.
   Identical queries share its result; different queries load their own results
   after it succeeds. Failed checks do not launch a browser for every queued query.
@@ -74,6 +78,19 @@ Version `2.1.16` validation on November 14: 541 public extension tests passed,
 with two optional fixture tests skipped. The accompanying app passed 687
 extension/layout tests, TypeScript, changed-file lint, and iOS/Android Expo
 JavaScript exports. No installed-device verification was performed.
+
+The `2.1.17` regression reproduced an opaque native failure followed by a stalled
+hidden browser: the old code timed out without calling verification. The new
+flow calls verification once and resumes from its returned page. Separate cases
+cover expired browser sessions with no challenge HTML, the off setting, healthy
+results, cancellation and rate limits. These tests do not establish live access
+on the reporting Android device. The companion app changes present explicit
+verification in an Android native window and retain cookie capture before close.
+
+Version `2.1.17` validation: 543 public extension tests passed and two optional
+fixture tests were skipped (`CINDER_APP` pointed at the current app checkout).
+The app passed 667 extension/layout tests, TypeScript, changed-file lint and
+Android/iOS Expo exports. No installed Android or iOS challenge test was run.
 
 ```sh
 node --test tests/annas-search-protection.test.cjs tests/annas-supporter.test.cjs

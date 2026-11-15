@@ -112,13 +112,35 @@ test('healthy and rate-limited sources never open the user verification window',
   await assert.rejects(limited.source.search('fixture', 0), error => error.status === 429);
 });
 
-test('a challenge found only inside the browser can request user verification', async t => {
+test('an opaque native failure can request verification before challenge HTML is available', async t => {
   const h = harness(t, { response: { status: 0 }, browser: ok(challenge) });
   let count = 0;
   h.cinder.verifyWebsite = async () => { count++; return ok(results); };
   assert.equal((await h.source.search('fixture', 0)).length, 1);
   assert.equal(count, 1);
+  assert.equal(h.browserCalls.length, 0);
+});
+
+test('native transport failures reach verification without a stalled hidden browser consuming the deadline', async t => {
+  const h = harness(t, { response: { status: 0 }, browser: () => new Promise(() => {}) });
+  h.source._SEARCH_BUDGET_MS = 200;
+  let verified = 0;
+  h.cinder.verifyWebsite = async () => { verified++; return ok(results); };
+  assert.equal((await h.source.search('fixture', 0))[0].id, md5);
+  assert.equal(verified, 1);
+  assert.equal(h.browserCalls.length, 0);
+});
+
+test('an expired saved browser session hands off even when the warmup returns no challenge HTML', async t => {
+  const h = harness(t, { browser: { status: 0, data: '' } });
+  h.source._rememberWorkingDomain('annas-archive.gd', undefined, true);
+  let verified = 0;
+  h.cinder.verifyWebsite = async () => { verified++; return ok(results); };
+  assert.equal((await h.source.search('fixture', 0))[0].id, md5);
+  assert.equal(verified, 1);
+  assert.equal(h.calls.length, 0);
   assert.equal(h.browserCalls.length, 1);
+  assert.ok(h.browserCalls[0].options.timeout > 0 && h.browserCalls[0].options.timeout < h.source._SEARCH_BUDGET_MS - 1000);
 });
 
 test('an expired saved browser session prompts once and accepts real empty results', async t => {

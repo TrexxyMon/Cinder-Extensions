@@ -6,7 +6,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.16",
+	version: "2.1.17",
 	icon: "📚",
 	description: "Anna's Archive downloads with on-device search, direct downloads, and optional TorBox resolution.",
 	contentType: "books",
@@ -201,7 +201,10 @@ __cinderExport = {
 		if (typeof cinder.fetchBrowser !== "function") return null;
 		var task = Promise.resolve().then(function() {
 			self._assertSearchActive(context);
-			return cinder.fetchBrowser("https://" + domain + path, { browserUserAgent: "mobile", signal: context.signal, headers: {
+			return cinder.fetchBrowser("https://" + domain + path, { browserUserAgent: "mobile", signal: context.signal,
+				// Leave time to hand off a stalled or expired session to the user.
+				timeout: context.canVerify ? Math.max(1, Math.min(maxWait + 750, context.deadline - Date.now() - 1500)) : undefined,
+				headers: {
 				"X-Cinder-Suppress-Interactive": "1",
 				// Give the normal browser a rendered viewport so iOS does not
 				// throttle a fully offscreen page while its own checks run.
@@ -297,6 +300,7 @@ __cinderExport = {
 			var pref = await cinder.store.get("preferred_domain");
 			var autoVerify = await cinder.store.get("auto_verify_website");
 			var canVerify = autoVerify !== "false" && autoVerify !== false && typeof cinder.verifyWebsite === "function";
+			context.canVerify = canVerify;
 			var domains = self._domainOrder(pref);
 			// A remembered healthy mirror must not sidestep Retry-After.
 			if (self._BASE_DOMAINS.some(function(domain) { return self._searchRetryUntil[domain] > Date.now(); })) {
@@ -314,9 +318,10 @@ __cinderExport = {
 				var reused = await self._fetchSearchBrowser(path, domains[0], context, 8000);
 				if (reused) { self._rememberWorkingDomain(domains[0], pref, true); return reused; }
 				if (self._workingDomain === working) self._workingDomain = null;
-				if (context.challengeDomain && canVerify) {
-					var renewed = await self._verifySearchPage(path, context.challengeDomain, context);
-					self._rememberWorkingDomain(context.challengeDomain, pref, true);
+				if (canVerify) {
+					var renewalDomain = context.challengeDomain || domains[0];
+					var renewed = await self._verifySearchPage(path, renewalDomain, context);
+					self._rememberWorkingDomain(renewalDomain, pref, true);
 					return renewed;
 				}
 			}
@@ -357,9 +362,12 @@ __cinderExport = {
 				// Sequential native requests only; never open one browser per mirror.
 			}
 			var browserDomain = challengedDomain || transportFailureDomain;
-			if (challengedDomain && canVerify) {
-				var verified = await self._verifySearchPage(path, challengedDomain, context);
-				self._rememberWorkingDomain(challengedDomain, pref, true);
+			if (browserDomain && canVerify) {
+				// Some Android network failures expose no challenge HTML at all.
+				// Open the supported handoff directly instead of spending the rest
+				// of the search budget in an invisible browser that cannot be solved.
+				var verified = await self._verifySearchPage(path, browserDomain, context);
+				self._rememberWorkingDomain(browserDomain, pref, true);
 				return verified;
 			}
 			if (browserDomain && !browserAttempted) {
