@@ -456,7 +456,7 @@
                            "description":  "Read western comics from BatCave. No debrid required.",
                            "language":  "English",
                            "contentType":  "comics",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@440c6cb06403a5d650ed56d77707fc7c1571069e/batcave.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@d929940f642abccb2a4521db425cef4a3aa00e2f/batcave.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "comic"
