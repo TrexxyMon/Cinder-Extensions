@@ -16,6 +16,82 @@ function load(response, browser = true) {
   return { source: context.__cinderExport, requests, context };
 }
 
+function detailsHtml(image, link = '') {
+  return '<header class="page__header"><h1>Cover fixture</h1></header><div class="page__poster img-wide">' +
+    (link ? '<a href="' + link + '">' + image + '</a>' : image) + '</div>';
+}
+
+for (const parser of ['fallback', 'DOM']) {
+  test(`published HD cover replaces a search thumbnail through Cinder's existing contract (${parser})`, async () => {
+    const hd = 'https://batcave.biz/uploads/posts/hd/9254.webp';
+    const image = '<img src="' + hd + '" width="300" height="450">';
+    const { source, requests, context } = load(detailsHtml(image, hd));
+    if (parser === 'DOM') {
+      const node = attrs => ({ attr: name => attrs[name] || '' });
+      context.cinder.parseHTML = () => ({ querySelector: selector => ({
+        '.page__header h1': { text: () => 'Cover fixture' },
+        '.page__poster img': node({ src: hd, width: '300', height: '450' }),
+        '.page__poster a[href]': node({ href: hd }),
+      })[selector] || null, querySelectorAll: () => [] });
+    }
+    const result = await source.getMangaDetails('/9254-batman-year-one.html');
+    assert.equal(result.cover, hd);
+    assert.equal(result.coverHighResolution, hd, 'detail cover must be explicitly eligible to replace the thumbnail');
+    assert.equal(result.coverHeaders.Referer, 'https://batcave.biz/9254-batman-year-one.html');
+    assert.equal(result.id, '/9254-batman-year-one.html');
+    assert.equal(requests.length, 1, 'no image probing or extra detail requests');
+    await source.getMangaDetails(result.id);
+    assert.equal(requests.length, 1, 'preserve the detail HTML cache');
+  });
+}
+
+test('uses an explicitly linked full image without rewriting or dropping its query', () => {
+  const { source } = load('');
+  assert.equal(source._detailCover('<img src="/uploads/mini/142x212/hash.webp">',
+    '<a href="//cdn.example.test/original.webp?signature=abc%2Fdef&amp;version=2">'),
+  'https://cdn.example.test/original.webp?signature=abc%2Fdef&version=2');
+});
+
+test('keeps legacy poster and lazy image URLs usable without an original link', async () => {
+  for (const image of ['<img src="/uploads/posts/poster/old.jpg">',
+    '<img src="data:image/gif;base64,placeholder" data-src="/uploads/posts/poster/old.jpg">']) {
+    const { source } = load(detailsHtml(image));
+    const result = await source.getMangaDetails('/1-fixture.html');
+    assert.equal(result.cover, 'https://batcave.biz/uploads/posts/poster/old.jpg');
+    assert.equal(result.coverHighResolution, result.cover);
+  }
+});
+
+test('uses the largest declared responsive cover without confusing src and data-srcset', () => {
+  const { source } = load('');
+  assert.equal(source._detailCover('<img data-srcset="/small.webp 300w, /large.webp?crop=0,0,1200,1800 1200w" src="/base.webp" width="300">'),
+    'https://batcave.biz/large.webp?crop=0,0,1200,1800');
+  assert.equal(source._detailCover('<img srcset="/base.webp 1x, /retina.webp 2x, /best.webp 3x" src="/base.webp">'), 'https://batcave.biz/best.webp');
+  assert.equal(source._detailCover('<img src="/original.webp" width="1200" srcset="/small.webp 300w">'), 'https://batcave.biz/original.webp');
+  assert.equal(source._detailCover('<img data-srcset="/retina.webp 2x">'), 'https://batcave.biz/retina.webp');
+  assert.equal(source._detailCover('<img srcset="/only.webp 1x">'), 'https://batcave.biz/only.webp');
+  assert.equal(source._detailCover('<img width="300" srcset="/only.webp 300w">'), 'https://batcave.biz/only.webp');
+});
+
+test('invalid artwork candidates and HTML links fall back instead of breaking the cover', () => {
+  const { source } = load('');
+  for (const href of ['/reader/1/2', '/redirect?file=cover.jpg', 'javascript:alert(1)', 'ftp://example.test/cover.jpg']) {
+    assert.equal(source._detailCover('<img src="/old.jpg" srcset="data:image/png;base64,xx 2x, javascript:bad 3x, /bad.jpg nope">', '<a href="' + href + '">'),
+      'https://batcave.biz/old.jpg');
+  }
+  assert.equal(source._detailCover('<img src="data:image/gif;base64,x">'), '');
+});
+
+test('missing cover metadata stays absent and search thumbnails are never guessed or probed', async () => {
+  const { source, requests } = load(detailsHtml(''));
+  const result = await source.getMangaDetails('/1-fixture.html');
+  assert.equal(result.cover, ''); assert.equal(result.coverHighResolution, undefined);
+  const cards = source._parseCards('<a class="poster" href="/9254-batman-year-one.html"><img src="/uploads/mini/142x212/opaque.webp"><h3 class="poster__title">Batman: Year One</h3></a>');
+  assert.equal(cards[0].cover, 'https://batcave.biz/uploads/mini/142x212/opaque.webp');
+  assert.equal(cards[0].coverHighResolution, undefined);
+  assert.equal(requests.length, 1);
+});
+
 test('parses both legacy and current reader data without evaluating trailing JavaScript', () => {
   const { source, context } = load('');
   const data = { images: ['https://images.example.test/1.jpg'], pages: 1, nested: { text: '} \\" quoted { ; </not-script>' } };
@@ -83,7 +159,7 @@ test('manifest advertises the same update as the script without changing compati
   const { source } = load('');
   const repo = JSON.parse(readFileSync(path.join(__dirname, '..', 'repo.json'), 'utf8'));
   const item = repo.extensions.find(item => item.id === source.id);
-  assert.equal(source.version, '0.2.3-cinder');
+  assert.equal(source.version, '0.2.4-cinder');
   assert.equal(item.version, source.version);
   assert.equal(item.minCinderVersion, '2.0.0');
 });

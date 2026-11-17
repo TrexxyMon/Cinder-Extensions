@@ -452,7 +452,7 @@
                        {
                            "id":  "batcave",
                            "name":  "BatCave",
-                           "version":  "0.2.3-cinder",
+                           "version":  "0.2.4-cinder",
                            "description":  "Read western comics from BatCave. No debrid required.",
                            "language":  "English",
                            "contentType":  "comics",

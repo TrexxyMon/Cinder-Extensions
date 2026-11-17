@@ -2,7 +2,7 @@ var BatCave = {};
 
 BatCave.id = "batcave";
 BatCave.name = "BatCave";
-BatCave.version = "0.2.3-cinder";
+BatCave.version = "0.2.4-cinder";
 BatCave.icon = "BC";
 BatCave.description = "Read western comics from BatCave. No debrid required.";
 BatCave.contentType = "comics";
@@ -261,6 +261,42 @@ BatCave._isSeriesId = function(value) {
   return /^\/\d+-[^?#]+\.html$/i.test(this._pathFromUrl(value).split("?")[0]);
 };
 
+// Use artwork actually advertised by the detail page. Listing thumbnails are
+// hashed /uploads/mini/... URLs and cannot safely be rewritten into HD paths.
+BatCave._coverAttr = function(node, name) {
+  if (!node) return "";
+  if (typeof node.attr === "function") return this._decode(node.attr(name) || "");
+  // Match the whole attribute name: src must not accidentally match data-src,
+  // data-srcset, etc. Keep this local to cover parsing.
+  var match = String(node).match(new RegExp("(?:^|\\s)" + name + "\\s*=\\s*([\"'])(.*?)\\1", "i"));
+  return match ? this._decode(match[2]) : "";
+};
+
+BatCave._detailCover = function(image, link) {
+  var self = this;
+  var absolute = function(value) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:\/\//i.test(value)) return "";
+    var url = self._absUrl(value);
+    return /^https?:\/\//i.test(url) ? url : "";
+  };
+  var original = absolute(this._coverAttr(link, "href"));
+  // A poster link may instead lead to the reader or another HTML page.
+  if (/\.(?:jpe?g|png|webp|avif|gif)$/i.test(original.split(/[?#]/)[0])) return original;
+  var fallback = absolute(this._coverAttr(image, "data-src")) || absolute(this._coverAttr(image, "src"));
+  var srcset = this._coverAttr(image, "data-srcset") || this._coverAttr(image, "srcset");
+  var width = Number(this._coverAttr(image, "width")) || 0;
+  var bestWidth = fallback ? width : 0, bestDensity = fallback ? 1 : 0, wide = "", dense = "";
+  // Descriptors separate candidates. This also preserves commas in CDN URLs.
+  var candidates = /(?:^|,\s*)(\S+)\s+(\d+(?:\.\d+)?)(w|x)(?=\s*(?:,|$))/g, match;
+  while ((match = candidates.exec(srcset.slice(0, 8192))) !== null) {
+    var url = absolute(match[1]), size = Number(match[2]);
+    if (!url || !Number.isFinite(size)) continue;
+    if (match[3] === "w" && size > bestWidth) { bestWidth = size; wide = url; }
+    if (match[3] === "x" && size > bestDensity) { bestDensity = size; dense = url; }
+  }
+  return wide || dense || fallback;
+};
+
 BatCave._pushCard = function(items, seen, href, title, cover) {
   var url = this._absUrl(href);
   var id = this._pathFromUrl(url);
@@ -405,9 +441,10 @@ BatCave.getMangaDetails = async function(id) {
     var doc = cinder.parseHTML(html);
     var titleNode = doc.querySelector(".page__header h1");
     var coverNode = doc.querySelector(".page__poster img");
+    var coverLink = doc.querySelector(".page__poster a[href]");
     var descriptionNode = doc.querySelector(".page__text");
     title = titleNode && titleNode.text ? titleNode.text() : "";
-    cover = coverNode ? this._absUrl(coverNode.attr("src") || coverNode.attr("data-src") || "") : "";
+    cover = this._detailCover(coverNode, coverLink);
     description = descriptionNode && descriptionNode.text ? descriptionNode.text() : "";
     var metadataRows = doc.querySelectorAll(".page__list li");
     for (var metadataIndex = 0; metadataIndex < metadataRows.length; metadataIndex++) {
@@ -432,7 +469,8 @@ BatCave.getMangaDetails = async function(id) {
   if (!cover) {
     var poster = (html.match(/<div[^>]+class=["'][^"']*\bpage__poster\b[^"']*["'][\s\S]*?<\/div>/i) || [])[0] || "";
     var imgTag = (poster.match(/<img[\s\S]*?>/i) || [])[0] || "";
-    cover = this._absUrl(this._attr(imgTag, "src") || this._attr(imgTag, "data-src"));
+    var linkTag = (poster.match(/<a\b[^>]*>/i) || [])[0] || "";
+    cover = this._detailCover(imgTag, linkTag);
   }
   if (!description) {
     description = this._stripTags((html.match(/<div[^>]+class=["'][^"']*\bpage__text\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1]);
@@ -463,6 +501,9 @@ BatCave.getMangaDetails = async function(id) {
     artist: metaValue("Artist") || undefined,
     description: description,
     cover: cover,
+    // Without this signal Cinder intentionally retains the existing search
+    // thumbnail even when the detail page supplies its original HD poster.
+    coverHighResolution: cover || undefined,
     coverHeaders: cover ? this._imageHeaders(cover, url) : undefined,
     genres: genres,
     status: /completed/i.test(metaValue("Release type")) ? "completed" : (/ongoing/i.test(metaValue("Release type")) ? "ongoing" : "unknown"),
