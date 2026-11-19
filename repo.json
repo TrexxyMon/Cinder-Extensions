@@ -84,11 +84,11 @@
                        {
                            "id":  "mayberry",
                            "name":  "Mayberry",
-                           "version":  "0.1.2-cinder",
+                           "version":  "0.1.3-cinder",
                            "description":  "Search and download EPUB books from the federated Mayberry library network.",
                            "language":  "Multilingual",
                            "contentType":  "books",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/mayberry.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@9a9ab3c2578076314be9723d1b532a9ef2b22378/mayberry.js",
                            "minCinderVersion":  "1.1.0",
                            "contentTypes":  [
                                                 "ebook"
@@ -533,12 +533,12 @@
                        {
                            "id":  "libgen",
                            "name":  "LibGen",
-                           "version":  "0.1.7",
+                           "version":  "0.1.8",
                            "description":  "Direct download-source extension for LibGen.",
                            "language":  "Multilingual",
                            "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@3acf41a30940226c65663689172d9489e4a71075/libgen.js",
-                           "minCinderVersion":  "2.0.0",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@9a9ab3c2578076314be9723d1b532a9ef2b22378/libgen.js",
+                           "minCinderVersion":  "1.1.0",
                            "contentTypes":  [
                                                 "ebook"
                                             ],

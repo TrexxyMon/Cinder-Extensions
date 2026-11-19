@@ -165,7 +165,7 @@ The separate private Z-Library Direct extension is unchanged.
 
 ### Mayberry migration
 
-Mayberry is now distributed from this public repository as `0.1.2-cinder`. It remains a multilingual **Books** extension with the same `mayberry` ID, search/download behavior, metadata, covers, and discovery shelves.
+Mayberry `0.1.3-cinder` supports the catalog's sign-in requirement. Enter your Mayberry User ID in the extension settings, then select **Test Connection**. Cinder stores the ID securely on your device and uses it for Mayberry catalog requests and downloads.
 
 If you installed it from the testing repository, keep this public repository added, refresh your repositories, and update Mayberry. If an older Cinder version does not offer a cross-repository update, select Mayberry in this repository and install/update it without uninstalling first. The extension ID and book IDs are unchanged.
 

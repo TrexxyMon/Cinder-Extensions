@@ -36,7 +36,7 @@ test("LibGen sends the detail Referer to its otherwise-empty download landing pa
 			? '<a href="' + directUrl + '">GET</a>' : "" };
 	});
 	assert.deepEqual(plain(await source.resolve(libgenItem)), {
-		url: directUrl, fileName: "Test Book.epub", headers: { Referer: adsUrl },
+		url: directUrl, fileName: "Test Book.epub", headers: { Referer: adsUrl, "User-Agent": source._USER_AGENT },
 	});
 	assert.equal(calls.length, 1);
 	assert.equal(calls[0].url, adsUrl);
@@ -116,6 +116,22 @@ test("LibGen legitimate empty results remain successful and do not trigger anoth
 	assert.equal(count, 1);
 });
 
+test("LibGen final file request preserves the catalog browser identity", async () => {
+	const source=loadSource("libgen",async(_url,options)=>{
+		assert.equal(options.headers['User-Agent'],source._USER_AGENT);
+		return {status:200,data:'<a href="'+directUrl+'">GET</a>'};
+	});
+	const result=await source.resolve(libgenItem);
+	assert.equal(result.headers['User-Agent'],source._USER_AGENT);
+	assert.equal(result.headers.Referer,adsUrl);
+});
+
+test("LibGen ignores catalog and login forms when resolving a download", async () => {
+	const source=loadSource("libgen",async()=>({status:200,data:'generic form'}),{parseHTML:()=>({
+		querySelector:selector=>selector==='form[action]'?{attr:()=>'/index.php'}:null,querySelectorAll:()=>[]})});
+	await assert.rejects(source.resolve(libgenItem),/download|ebook file/);
+});
+
 test("LibGen search still parses supported table results with stable IDs and metadata", async () => {
 	function node(text = "", attrs = {}, one = {}, many = {}) {
 		return { text: () => text, attr: (name) => attrs[name],
@@ -154,6 +170,36 @@ test("LibGen keeps custom search URLs and page numbering unchanged", async () =>
 	}, { store: { get: async (key) => settings[key] } });
 	await source.search("Title & Author", 2);
 	assert.deepEqual(calls, ["https://catalog.example/search?q=Title+%26+Author&page=3&offset=2"]);
+});
+
+test("LibGen title search excludes publisher and series noise, including persisted former defaults", async () => {
+	const source=loadSource('libgen',async()=>{throw Error('no network')});
+	const url=new URL(await source._searchUrl('The Titan\u2019s Curse',0));
+	assert.deepEqual(url.searchParams.getAll('columns[]'),['t','a','i']);
+	assert.equal(url.searchParams.get('req'),'The Titan\u2019s Curse');
+	const former=source._DEFAULT_SEARCH_PATH.replace('&columns%5B%5D=i','&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i');
+	const upgraded=loadSource('libgen',async()=>{throw Error('no network')},{store:{get:async key=>key==='search_path'?former:undefined}});
+	assert.equal(await upgraded._searchUrl('The Titan\u2019s Curse',0),url.href);
+});
+
+test("LibGen parses all rows without explicit tbody and ignores nested table wrapper cells", async () => {
+	const cell=(text,links={})=>({tagName:'td',text:()=>text,querySelector:s=>links[s]||null,querySelectorAll:()=>[]});
+	const anchor=(text,url)=>({text:()=>text,attr:()=>url});
+	const row=id=>({children:[cell('',{"a[href*='edition']":anchor('Book '+id,'edition.php?id='+id)}),cell('Author'),cell('Publisher'),cell('1900'),cell('English'),cell('100'),cell('1 MB',{"a[href]":anchor('1 MB','file.php?id='+id)}),cell('epub'),cell('')],querySelectorAll:()=>[]});
+	const rows=[row('100'),row('101')];
+	const wrapper={children:[cell('container')],querySelectorAll:()=>rows.flatMap(row=>row.children)};
+	const source=loadSource('libgen',async()=>{throw Error('no network')});
+	const results=await source._parseLegacyTableRows({querySelectorAll:selector=>selector==='table.table-striped tr'?[wrapper,...rows]:[]});
+	assert.deepEqual(plain(results.map(x=>x.title)),['Book 100','Book 101']);
+	assert.equal(new Set(results.map(x=>x.id)).size,2);
+});
+
+test("LibGen GET download forms preserve their query fields and browser identity", async () => {
+	const source=loadSource('libgen',async()=>{throw Error('no network')});
+	const form={attr:name=>({action:'/get.php',method:'GET'})[name],querySelectorAll:()=>['md5','key'].map(name=>({attr:attr=>attr==='name'?name:name==='md5'?md5:'test + key'}))};
+	const resolved=await source._extractFormDownload({querySelector:()=>form},adsUrl,'https://libgen.li');
+	assert.equal(new URL(resolved.url).searchParams.get('key'),'test + key');
+	assert.equal(resolved.headers['User-Agent'],source._USER_AGENT);
 });
 
 const filename = "Test_Book.epub";

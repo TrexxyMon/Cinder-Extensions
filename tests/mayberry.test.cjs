@@ -6,8 +6,8 @@ const { test } = require('node:test');
 const root = path.resolve(__dirname, '..');
 const plain = value => JSON.parse(JSON.stringify(value));
 
-function loadSource(fetch) {
- const context = vm.createContext({ URL, cinder: { fetch } });
+function loadSource(fetch, secureStore) {
+ const context = vm.createContext({ URL, btoa, cinder: { fetch, secureStore } });
  vm.runInContext(readFileSync(path.join(root, 'mayberry.js'), 'utf8'), context);
  return context.__cinderExport;
 }
@@ -32,16 +32,16 @@ test('Mayberry public manifest preserves identity, category and backwards-compat
  assert.equal(entries.length, 1);
  const meta = entries[0];
  const source = loadSource(async () => {throw Error('Unexpected network call');});
- assert.equal(meta.version, '0.1.2-cinder');
+ assert.equal(meta.version, '0.1.3-cinder');
  for(const field of ['id', 'name', 'version', 'description', 'language', 'contentType', 'excludeFromDefaultMetadataProviders']) assert.equal(meta[field], source[field]);
  assert.deepEqual(meta.contentTypes, plain(source.contentTypes));
  assert.equal(meta.contentType, 'books');
  assert.deepEqual(meta.contentTypes, ['ebook']);
  assert.equal(meta.minCinderVersion, '1.1.0');
- assert.equal(meta.scriptUrl, 'https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/mayberry.js');
+ assert.match(meta.scriptUrl, /^https:\/\/cdn\.jsdelivr\.net\/gh\/TrexxyMon\/Cinder-Extensions@[0-9a-f]{40}\/mayberry\.js$/);
  assert.equal(source.capabilities.searchDownloads, true);
  assert.equal(source.capabilities.download, true);
- assert.equal(source.capabilities.resolve, false);
+ assert.equal(source.capabilities.resolve, true);
 });
 
 test('Search preserves stable IDs, direct downloads, covers and legacy metadata fields', async () => {
@@ -126,4 +126,44 @@ test('Legacy Atom entry mapping preserves original IDs, full covers and synopsis
  assert.equal(item.extra.description, 'Atom synopsis');
  assert.equal(item.extra.summary, item.description);
  assert.equal(item.format, 'epub');
+});
+
+test('Mayberry user ID uses secure storage and authenticates catalog, covers, details and downloads', async () => {
+ const calls=[], auth='Basic '+btoa('fixture-user:fixture-user');
+ const source=loadSource(async (url,options)=>{calls.push({url,options});return response();}, {get:async key=>key==='user_id'?'fixture-user':null});
+ assert.equal(source.getSettings()[0].type,'password');
+ const [item]=await source.search('Fixture',0);
+ assert.equal(calls[0].options.headers.Authorization,auth);
+ assert.equal(item.coverHeaders.Authorization,auth);
+ assert.equal((await source.getBookDetails(item.id)).coverHeaders.Authorization,auth);
+ assert.equal((await source.search('Fixture',0))[0].coverHeaders.Authorization,auth,'cached feed keeps cover authorization');
+ assert.equal((await source.resolve(item)).headers.Authorization,auth);
+ assert.equal((await source.resolve({...item,url:'https://federated.example/book.epub'})).headers,undefined);
+ assert.equal((await source.resolve({...item,url:'https://mayberry.pub.evil.example/book.epub'})).headers,undefined);
+ assert.equal((await source.resolve({...item,url:'http://mayberry.pub/book.epub'})).headers,undefined);
+});
+
+test('Mayberry authentication failure is actionable and is never retried', async () => {
+ let count=0; const source=loadSource(async()=>{count++;return {status:401,data:'Sign in with your Mayberry user ID as both username and password'};});
+ await assert.rejects(source.testConnection(),error=>error.status===401&&error.stopSearch&&/user ID/.test(error.message));
+ assert.equal(count,1);
+ await assert.rejects(source.resolve({url:'https://mayberry.pub/book.epub'}),/user ID/);
+});
+
+test('changing Mayberry credentials invalidates cached results', async () => {
+ let identity='first',calls=0;const source=loadSource(async()=>{calls++;return response();},{get:async()=>identity});
+ await source.search('Fixture',0);identity='second';
+ const [item]=await source.search('Fixture',0);
+ assert.equal(calls,2);assert.equal(item.coverHeaders.Authorization,'Basic '+btoa('second:second'));
+});
+
+test('Mayberry account changes cannot publish a stale in-flight feed or clear its replacement', async () => {
+ let identity='first',release,count=0;
+ const source=loadSource(async()=>{if(++count===1)return new Promise(resolve=>release=resolve);return response();},{get:async()=>identity});
+ const first=source.search('Fixture',0);await new Promise(resolve=>setImmediate(resolve));
+ identity='second';const next=await source.search('Fixture',0);
+ release(response());await assert.rejects(first,/account changed/);
+ assert.equal(next[0].coverHeaders.Authorization,'Basic '+btoa('second:second'));
+ assert.equal((await source.search('Fixture',0))[0].coverHeaders.Authorization,next[0].coverHeaders.Authorization);
+ assert.equal(count,2);
 });
