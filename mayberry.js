@@ -2,7 +2,7 @@ var MayberrySource = {};
 
 MayberrySource.id = "mayberry";
 MayberrySource.name = "Mayberry";
-MayberrySource.version = "0.1.2-cinder";
+MayberrySource.version = "0.1.3-cinder";
 MayberrySource.icon = "MB";
 MayberrySource.description = "Search and download EPUB books from the federated Mayberry library network.";
 MayberrySource.contentType = "books";
@@ -13,7 +13,7 @@ MayberrySource.capabilities = {
 	search: true,
 	discover: true,
 	download: true,
-	resolve: false,
+	resolve: true,
 	searchDownloads: true,
 	manga: false,
 };
@@ -62,10 +62,33 @@ MayberrySource._text = function(element) {
 	return this._cleanText(element.text());
 };
 
-MayberrySource._headers = function() {
-	return {
+MayberrySource._authError = function() {
+	var error = new Error("Mayberry requires your user ID. Enter it in extension settings, then test the connection again. The server uses the same ID as username and password.");
+	error.status = 401; error.stopSearch = true;
+	return error;
+};
+
+MayberrySource._isOwnOrigin = function(url) {
+	return /^https:\/\/mayberry\.pub(?::443)?(?:[/?#]|$)/i.test(String(url || ""));
+};
+
+MayberrySource._headers = async function(url) {
+	var userId = cinder.secureStore && typeof cinder.secureStore.get === "function"
+		? String(await cinder.secureStore.get("user_id") || "").trim() : "";
+	if (/[:\x00-\x1f\x7f]/.test(userId)) throw this._authError();
+	if (this._authIdentity !== userId) {
+		this._authIdentity = userId;
+		this._feedCache = {}; this._feedCacheOrder = []; this._pendingFeeds = {};
+		this._detailsById = {}; this._detailsOrder = [];
+	}
+	var headers = {
 		Accept: "application/opds+json, application/atom+xml;profile=opds-catalog;q=0.9, application/json;q=0.8, application/xml;q=0.7, */*;q=0.1",
 	};
+	if (userId && this._isOwnOrigin(url)) {
+		var bytes = encodeURIComponent(userId + ":" + userId).replace(/%([0-9A-F]{2})/g, function(_, hex) { return String.fromCharCode(parseInt(hex, 16)); });
+		headers.Authorization = "Basic " + btoa(bytes);
+	}
+	return headers;
 };
 
 MayberrySource._parseFeedPayload = function(data, url) {
@@ -91,10 +114,14 @@ MayberrySource._rememberFeed = function(url, data) {
 
 MayberrySource._fetchFeed = async function(pathOrUrl, maxAgeMs) {
 	var url = this._absoluteUrl(pathOrUrl || "/opds", this.BASE_URL);
+	var headers = await this._headers(url);
+	var identity = this._authIdentity;
 	var now = Date.now();
 	var cached = this._feedCache[url];
 	if (cached && now - cached.savedAt <= Math.max(0, Number(maxAgeMs) || 0)) {
-		return this._parseFeedPayload(cached.data, url);
+		var cachedFeed = this._parseFeedPayload(cached.data, url);
+		cachedFeed.authHeaders = headers.Authorization ? { Authorization: headers.Authorization } : undefined;
+		return cachedFeed;
 	}
 
 	if (!this._pendingFeeds[url]) {
@@ -104,11 +131,12 @@ MayberrySource._fetchFeed = async function(pathOrUrl, maxAgeMs) {
 			for (var attempt = 0; attempt < 2; attempt++) {
 				try {
 					var response = await cinder.fetch(url, {
-						headers: self._headers(),
+						headers: headers,
 						timeout: 15000,
 					});
 					var status = Number(response && response.status) || 0;
 					var data = String((response && response.data) || "");
+					if (status === 401 || status === 403) throw self._authError();
 					var isOpdsJson =
 						/^\s*\{/.test(data) &&
 						/"metadata"\s*:/i.test(data) &&
@@ -127,6 +155,7 @@ MayberrySource._fetchFeed = async function(pathOrUrl, maxAgeMs) {
 					throw new Error("Mayberry returned HTTP " + status + ".");
 				} catch (error) {
 					lastError = error;
+					if (error && error.stopSearch) throw error;
 					if (attempt === 0) continue;
 				}
 			}
@@ -134,12 +163,17 @@ MayberrySource._fetchFeed = async function(pathOrUrl, maxAgeMs) {
 		})();
 	}
 
+	var pending = this._pendingFeeds[url];
 	try {
-		var data = await this._pendingFeeds[url];
+		var data = await pending;
+		await this._headers(url);
+		if (this._authIdentity !== identity) throw new Error("Mayberry account changed. Please retry.");
 		this._rememberFeed(url, data);
-		return this._parseFeedPayload(data, url);
+		var feed = this._parseFeedPayload(data, url);
+		feed.authHeaders = headers.Authorization ? { Authorization: headers.Authorization } : undefined;
+		return feed;
 	} finally {
-		delete this._pendingFeeds[url];
+		if (this._pendingFeeds[url] === pending) delete this._pendingFeeds[url];
 	}
 };
 
@@ -245,6 +279,7 @@ MayberrySource._rememberDetails = function(result) {
 		title: result.title,
 		author: result.author,
 		cover: result.cover,
+		coverHeaders: result.coverHeaders,
 		coverHighResolution: result.coverHighResolution || result.cover,
 		description: result.description,
 		genres: result.genres || (result.extra && result.extra.genres) || [],
@@ -418,6 +453,12 @@ MayberrySource._parseEntry = function(entry, feedUrl) {
 };
 
 MayberrySource._parseBooks = function(feed) {
+	var self = this;
+	var decorate = function(result) {
+		if (result && feed.authHeaders && self._isOwnOrigin(result.cover)) result.coverHeaders = feed.authHeaders;
+		self._rememberDetails(result);
+		return result;
+	};
 	if (feed.json && Array.isArray(feed.json.publications)) {
 		var jsonResults = [];
 		var jsonSeen = {};
@@ -427,7 +468,7 @@ MayberrySource._parseBooks = function(feed) {
 			var jsonKey = String(jsonResult.id || jsonResult.url || (jsonResult.title + "|" + jsonResult.author)).toLowerCase();
 			if (jsonSeen[jsonKey]) continue;
 			jsonSeen[jsonKey] = true;
-			jsonResults.push(jsonResult);
+			jsonResults.push(decorate(jsonResult));
 		}
 		return jsonResults;
 	}
@@ -440,7 +481,7 @@ MayberrySource._parseBooks = function(feed) {
 		var key = String(result.id || result.url || (result.title + "|" + result.author)).toLowerCase();
 		if (seen[key]) continue;
 		seen[key] = true;
-		results.push(result);
+		results.push(decorate(result));
 	}
 	return results;
 };
@@ -488,6 +529,7 @@ MayberrySource.testConnection = async function() {
 };
 
 MayberrySource.getBookDetails = async function(bookId) {
+	await this._headers(this.BASE_URL);
 	var key = String(bookId || "");
 	if (this._detailsById[key]) return this._detailsById[key];
 	var searchTerm = this._identifierValue(key);
@@ -503,7 +545,18 @@ MayberrySource.getBookDetails = async function(bookId) {
 };
 
 MayberrySource.getSettings = function() {
-	return [];
+	return [{ id: "user_id", label: "Mayberry User ID", type: "password", defaultValue: "",
+		description: "Required by Mayberry. Stored securely on this device; used as both username and password for its catalog and downloads." }];
+};
+
+MayberrySource.resolve = async function(item) {
+	var url = this._absoluteUrl(item && (item.url || item.extra && item.extra.downloadUrl), this.BASE_URL);
+	if (!/^https?:\/\//i.test(url) || /[\r\n]/.test(url)) throw new Error("Mayberry did not provide a valid download URL.");
+	var headers = await this._headers(url);
+	if (this._isOwnOrigin(url) && !headers.Authorization) throw this._authError();
+	// Federated acquisition hosts do not receive Mayberry credentials.
+	return { url: url, fileName: this._cleanText(item.title || "Book") + ".epub",
+		headers: headers.Authorization ? { Authorization: headers.Authorization } : undefined };
 };
 
 __cinderExport = MayberrySource;

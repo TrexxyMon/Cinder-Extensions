@@ -1,14 +1,15 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.7",
+	version: "0.1.8",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
 	contentTypes: ["ebook"],
 	excludeFromDefaultMetadataProviders: true,
 	_DEFAULT_BASE_URL: "https://libgen.li",
-	_DEFAULT_SEARCH_PATH: "/index.php?req={query}&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i&objects%5B%5D=f&objects%5B%5D=e&objects%5B%5D=s&objects%5B%5D=a&objects%5B%5D=p&objects%5B%5D=w&topics%5B%5D=l&topics%5B%5D=c&topics%5B%5D=f&topics%5B%5D=a&topics%5B%5D=m&topics%5B%5D=r&topics%5B%5D=s&res=25&filesuns=all{pageParam}",
+	_USER_AGENT: "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+	_DEFAULT_SEARCH_PATH: "/index.php?req={query}&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=i&objects%5B%5D=f&objects%5B%5D=e&objects%5B%5D=s&objects%5B%5D=a&objects%5B%5D=p&objects%5B%5D=w&topics%5B%5D=l&topics%5B%5D=c&topics%5B%5D=f&topics%5B%5D=a&topics%5B%5D=m&topics%5B%5D=r&topics%5B%5D=s&res=25&filesuns=all{pageParam}",
 	_DEFAULT_DETAIL_TEMPLATE: "https://libgen.li/edition.php?id={id}",
 	_DEFAULT_DOWNLOAD_TEMPLATE: "https://libgen.li/file.php?id={id}",
 	_DEFAULT_MD5_DOWNLOAD_TEMPLATE: "https://libgen.li/ads.php?md5={md5}",
@@ -113,7 +114,7 @@ __cinderExport = {
 		var headers = {
 			Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 			"Accept-Language": "en-US,en;q=0.8",
-			"User-Agent": "Mozilla/5.0 (Cinder Research Fixture)",
+			"User-Agent": this._USER_AGENT,
 		};
 		// The download landing page returns an empty HTTP 200 without its
 		// referring catalog/file page. Preserve it on retries and nested hops.
@@ -144,6 +145,10 @@ __cinderExport = {
 	_searchUrl: async function(query, page) {
 		var baseUrl = await this._getBaseUrl();
 		var path = await this._getSetting("search_path", this._DEFAULT_SEARCH_PATH);
+		// Upgrade only the exact former default. Publisher/series matches (for
+		// example Titan + Curse) crowded real editions off the first page.
+		var formerDefault = this._DEFAULT_SEARCH_PATH.replace("&columns%5B%5D=i", "&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i");
+		if (path === formerDefault) path = this._DEFAULT_SEARCH_PATH;
 		var pageNumber = (page || 0) + 1;
 		var pageParam = pageNumber > 1 ? "&curtab=f&order=&ordermode=desc&filesuns=all&page=" + pageNumber : "";
 		var encodedQuery = encodeURIComponent(query || "").replace(/%20/g, "+");
@@ -306,7 +311,8 @@ __cinderExport = {
 	},
 
 	_resolvedDownload: function(item, url, referer, useBrowser) {
-		var headers = referer ? { Referer: referer } : undefined;
+		var headers = { "User-Agent": this._USER_AGENT };
+		if (referer) headers.Referer = referer;
 		if (useBrowser) {
 			headers = headers || {};
 			headers["X-Cinder-Expect-Interstitial"] = "1";
@@ -330,6 +336,7 @@ __cinderExport = {
 		if (!visitKey || visited[visitKey]) {
 			throw new Error("LibGen download page loop detected.");
 		}
+		if (Object.keys(visited).length >= 8) throw new Error("LibGen returned too many download redirects. Try another result.");
 		visited[visitKey] = true;
 		var html = await this._fetchHtml(pageUrl, referer || baseUrl + "/");
 		var keyedUrl = this._extractKeyedDownloadUrl(html, baseUrl, md5 || this._md5FromUrl(pageUrl));
@@ -391,14 +398,17 @@ __cinderExport = {
 
 	_parseLegacyTableRows: async function(doc) {
 		var rows = doc.querySelectorAll("table.table-striped tbody tr");
-		if (!rows || rows.length === 0) rows = doc.querySelectorAll("table tbody tr");
+		if (!rows || rows.length === 0) rows = doc.querySelectorAll("table.table-striped tr");
+		if (!rows || rows.length === 0) rows = doc.querySelectorAll("table tr");
 		var results = [];
 		var seen = {};
 
 		for (var i = 0; i < rows.length; i++) {
 			try {
 				var row = rows[i];
-				var cells = row.querySelectorAll("td");
+				// Only this row's cells: wrapper tables can contain the entire
+				// catalogue and otherwise collapse many books into one false hit.
+				var cells = row.children ? row.children.filter(function(cell) { return String(cell.tagName).toLowerCase() === "td"; }) : row.querySelectorAll("td");
 				if (!cells || cells.length < 9) continue;
 
 				var infoCell = cells[0];
@@ -441,7 +451,7 @@ __cinderExport = {
 					url: detailUrl,
 					format: format,
 					size: size || undefined,
-					source: "Generic Direct Fixture",
+						source: "LibGen",
 					extra: {
 						directUrl: directUrl,
 						detailUrl: detailUrl,
@@ -539,7 +549,7 @@ __cinderExport = {
 	},
 
 	_extractFormDownload: async function(doc, pageUrl, baseUrl) {
-		var form = doc.querySelector("form[data-cinder-download], form.download, form[action]");
+		var form = doc.querySelector("form[data-cinder-download], form.download, form[action*='get.php']");
 		if (!form) return null;
 		var action = this._absUrl(baseUrl, form.attr("action") || pageUrl);
 		if (!action) return null;
@@ -552,8 +562,12 @@ __cinderExport = {
 		for (var i = 0; i < inputs.length; i++) {
 			var input = inputs[i];
 			var name = this._clean(input.attr("name") || "");
-			if (!name) continue;
+			if (!name || name === "__proto__" || name === "constructor" || name === "prototype") continue;
 			body[name] = input.attr("value") || "";
+		}
+		if (method === "GET") {
+			var query = Object.keys(body).map(function(name) { return encodeURIComponent(name) + "=" + encodeURIComponent(body[name]); }).join("&");
+			if (query) action += (action.indexOf("?") >= 0 ? "&" : "?") + query;
 		}
 
 		return {
@@ -561,7 +575,7 @@ __cinderExport = {
 			downloadRequest: method === "POST"
 				? { method: "POST", body: body, bodyEncoding: "form" }
 				: undefined,
-			headers: { Referer: pageUrl },
+			headers: { Referer: pageUrl, "User-Agent": this._USER_AGENT },
 		};
 	},
 
@@ -610,7 +624,7 @@ __cinderExport = {
 		}
 
 		var pageUrl = this._absUrl(baseUrl, item.url || (item.extra ? item.extra.detailUrl : ""));
-		if (!pageUrl) throw new Error("No fixture detail URL to resolve.");
+		if (!pageUrl) throw new Error("LibGen result has no detail URL to resolve.");
 
 		cinder.log("[LibGen] Resolve: " + pageUrl);
 		var html = await this._fetchHtml(pageUrl);
@@ -677,6 +691,6 @@ __cinderExport = {
 		}
 
 		if (nestedError) throw nestedError;
-		throw new Error("No fixture direct link or download form found.");
+		throw new Error("LibGen did not expose a download link for this file. Try another result.");
 	},
 };
