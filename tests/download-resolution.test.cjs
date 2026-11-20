@@ -201,9 +201,23 @@ test("LibGen title search excludes publisher and series noise, including persist
 	const url=new URL(await source._searchUrl('The Titan\u2019s Curse',0));
 	assert.deepEqual(url.searchParams.getAll('columns[]'),['t','a','i']);
 	assert.equal(url.searchParams.get('req'),'The Titan\u2019s Curse');
-	const former=source._DEFAULT_SEARCH_PATH.replace('&columns%5B%5D=i','&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i');
-	const upgraded=loadSource('libgen',async()=>{throw Error('no network')},{store:{get:async key=>key==='search_path'?former:undefined}});
-	assert.equal(await upgraded._searchUrl('The Titan\u2019s Curse',0),url.href);
+	const previous = source._DEFAULT_SEARCH_PATH.replace('&order=f_id&ordermode=desc', '');
+	const former = previous.replace('&columns%5B%5D=i','&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i');
+	for (const path of [previous, former]) {
+		const upgraded = loadSource('libgen', async () => { throw Error('no network'); },
+			{ store: { get: async key => key === 'search_path' ? path : undefined } });
+		assert.equal(await upgraded._searchUrl('The Titan\u2019s Curse',0),url.href);
+	}
+});
+
+test("LibGen surfaces new file records on page one and preserves the same sort when paging", async () => {
+	const source = loadSource("libgen", async () => { throw Error("no network"); });
+	for (const page of [0, 1, 2]) {
+		const url = new URL(await source._searchUrl("The Titan's Curse", page));
+		assert.deepEqual(url.searchParams.getAll("order"), ["f_id"]);
+		assert.deepEqual(url.searchParams.getAll("ordermode"), ["desc"]);
+		assert.equal(url.searchParams.get("page"), page === 0 ? null : String(page + 1));
+	}
 });
 
 test("LibGen parses all rows without explicit tbody and ignores nested table wrapper cells", async () => {

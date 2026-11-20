@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.9",
+	version: "0.1.10",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
@@ -9,7 +9,7 @@ __cinderExport = {
 	excludeFromDefaultMetadataProviders: true,
 	_DEFAULT_BASE_URL: "https://libgen.li",
 	_USER_AGENT: "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-	_DEFAULT_SEARCH_PATH: "/index.php?req={query}&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=i&objects%5B%5D=f&objects%5B%5D=e&objects%5B%5D=s&objects%5B%5D=a&objects%5B%5D=p&objects%5B%5D=w&topics%5B%5D=l&topics%5B%5D=c&topics%5B%5D=f&topics%5B%5D=a&topics%5B%5D=m&topics%5B%5D=r&topics%5B%5D=s&res=25&filesuns=all{pageParam}",
+	_DEFAULT_SEARCH_PATH: "/index.php?req={query}&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=i&objects%5B%5D=f&objects%5B%5D=e&objects%5B%5D=s&objects%5B%5D=a&objects%5B%5D=p&objects%5B%5D=w&topics%5B%5D=l&topics%5B%5D=c&topics%5B%5D=f&topics%5B%5D=a&topics%5B%5D=m&topics%5B%5D=r&topics%5B%5D=s&res=25&filesuns=all&order=f_id&ordermode=desc{pageParam}",
 	_DEFAULT_DETAIL_TEMPLATE: "https://libgen.li/edition.php?id={id}",
 	_DEFAULT_DOWNLOAD_TEMPLATE: "https://libgen.li/file.php?id={id}",
 	_DEFAULT_MD5_DOWNLOAD_TEMPLATE: "https://libgen.li/ads.php?md5={md5}",
@@ -164,12 +164,15 @@ __cinderExport = {
 	_searchUrl: async function(query, page) {
 		var baseUrl = await this._getBaseUrl();
 		var path = await this._getSetting("search_path", this._DEFAULT_SEARCH_PATH);
-		// Upgrade only the exact former default. Publisher/series matches (for
-		// example Titan + Curse) crowded real editions off the first page.
-		var formerDefault = this._DEFAULT_SEARCH_PATH.replace("&columns%5B%5D=i", "&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i");
-		if (path === formerDefault) path = this._DEFAULT_SEARCH_PATH;
+		// Existing installations may have persisted a built-in template as a setting.
+		var previousDefault = this._DEFAULT_SEARCH_PATH.replace("&order=f_id&ordermode=desc", "");
+		var formerDefault = previousDefault.replace("&columns%5B%5D=i", "&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i");
+		if (path === previousDefault || path === formerDefault) path = this._DEFAULT_SEARCH_PATH;
 		var pageNumber = (page || 0) + 1;
-		var pageParam = pageNumber > 1 ? "&curtab=f&order=&ordermode=desc&filesuns=all&page=" + pageNumber : "";
+		var pageParam = "";
+		if (pageNumber > 1) {
+			pageParam = (path === this._DEFAULT_SEARCH_PATH ? "&curtab=f&page=" : "&curtab=f&order=&ordermode=desc&filesuns=all&page=") + pageNumber;
+		}
 		var encodedQuery = encodeURIComponent(query || "").replace(/%20/g, "+");
 		var resolved = path
 			.replace(/\{query\}/g, encodedQuery)
