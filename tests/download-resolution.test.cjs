@@ -178,7 +178,8 @@ test("LibGen search still parses supported table results with stable IDs and met
 	assert.equal(results[0].id, "fixture-table-" + md5 + "-epub");
 	assert.equal(results[0].title, "A Test Title");
 	assert.equal(results[0].author, "Test Author");
-	assert.equal(results[0].url, detailUrl);
+	assert.equal(results[0].url, "https://libgen.li/file.php?id=200");
+	assert.equal(results[0].extra.detailUrl, detailUrl);
 	assert.equal(results[0].extra.directUrl, adsUrl);
 	assert.equal(results[0].extra.publisher, "Test Publisher");
 	assert.equal(results[0].extra.language, "English");
