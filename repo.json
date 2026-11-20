@@ -533,11 +533,11 @@
                        {
                            "id":  "libgen",
                            "name":  "LibGen",
-                           "version":  "0.1.10",
+                           "version":  "0.1.11",
                            "description":  "Direct download-source extension for LibGen.",
                            "language":  "Multilingual",
                            "contentType":  "books",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@0c6f67e965acd6228fede539eab5d118f1a3b710/libgen.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@52963d9dcac5371579a16dc2a56a6a87c60a56ee/libgen.js",
                            "minCinderVersion":  "1.1.0",
                            "contentTypes":  [
                                                 "ebook"
