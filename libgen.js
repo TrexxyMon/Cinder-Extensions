@@ -722,12 +722,14 @@ __cinderExport = {
 		var advertised = this._catalogGetUrl(extra.catalogGet, catalog, md5);
 		if (advertised && await check(this._resolvedDownload(item, advertised, item.url, false))) return true;
 		if (Date.now() >= deadline) return false;
+		var mirror = this._fileMirrorUrl(extra.fileMirror, md5, extra.fileId);
+		if (mirror && await check(this._resolvedDownload(item, mirror, "", false))) return true;
+		if (Date.now() >= deadline) return false;
 		var hasFile = /^[a-f0-9]{32}$/.test(md5) && /^\d+$/.test(extra.fileId || "");
 		try {
 			if (await check(await this._resolvePrimary(item, md5, hasFile, deadline))) return true;
 		} catch (err) { if (err && err.name === "AbortError") throw err; }
-		var mirror = this._fileMirrorUrl(extra.fileMirror, md5, extra.fileId);
-		return mirror && check(this._resolvedDownload(item, mirror, "", false));
+		return false;
 	},
 
 	_matchesFileStart: function(response, format) {
@@ -766,7 +768,7 @@ __cinderExport = {
 		if (size > legacyBudget.bytes) return;
 		legacyBudget.bytes -= size;
 		var request = Object.assign({}, file.headers, { Range: "bytes=0-127" });
-		var response = await cinder.fetchBase64(target, { headers: request, timeout: this._remainingTime(deadline, 2000) });
+		var response = await cinder.fetchBase64(target, { headers: request, timeout: this._remainingTime(deadline, 4200) });
 		if (response.status === 206 && !Object.keys(response.headers || {}).some(function(k) {
 			return k.toLowerCase() === "content-range" && /^bytes 0-/i.test(response.headers[k]);
 		})) return;
