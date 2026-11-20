@@ -2,7 +2,7 @@ var MayberrySource = {};
 
 MayberrySource.id = "mayberry";
 MayberrySource.name = "Mayberry";
-MayberrySource.version = "0.1.4-cinder";
+MayberrySource.version = "0.1.5-cinder";
 MayberrySource.icon = "MB";
 MayberrySource.description = "Search and download EPUB books from the federated Mayberry library network.";
 MayberrySource.contentType = "books";
@@ -116,6 +116,10 @@ MayberrySource._rememberFeed = function(url, data) {
 MayberrySource._fetchFeed = async function(pathOrUrl, maxAgeMs) {
 	var url = this._absoluteUrl(pathOrUrl || "/opds", this.BASE_URL);
 	var headers = await this._headers(url);
+	// Mayberry's OpenSearch descriptor advertises Atom for the search endpoint.
+	if (/^\/opds\/search\?/.test(pathOrUrl)) {
+		headers.Accept = "application/atom+xml;profile=opds-catalog, application/opds+json;q=0.9, application/xml;q=0.8, application/json;q=0.7";
+	}
 	var identity = this._authIdentity;
 	var now = Date.now();
 	var cached = this._feedCache[url];
@@ -190,7 +194,14 @@ MayberrySource._jsonText = function(value) {
 		return parts.join(", ");
 	}
 	if (typeof value === "object") {
-		return this._jsonText(value.name || value.value || value.title || "");
+		var label = value.name || value.value || value.title;
+		if (label) return this._jsonText(label);
+		// OPDS 2 permits titles and contributor names as language maps.
+		var langs = Object.keys(value).filter(function(key) {
+			return /^[a-z]{2,3}(?:-[a-z0-9]+)*$/i.test(key) && typeof value[key] === "string" && value[key].trim();
+		});
+		var lang = langs.indexOf("en") >= 0 ? "en" : langs[0];
+		return lang ? this._cleanText(value[lang]) : "";
 	}
 	return "";
 };
@@ -301,7 +312,7 @@ MayberrySource._parseJsonPublication = function(publication, feedUrl) {
 	for (var i = 0; i < links.length; i++) {
 		var rel = this._jsonText(links[i] && links[i].rel).toLowerCase();
 		var type = this._jsonText(links[i] && links[i].type).toLowerCase();
-		if (rel.indexOf("acquisition") >= 0 || type.indexOf("epub") >= 0 || type.indexOf("audio") >= 0) {
+		if (links[i] && links[i].href && (rel.indexOf("acquisition") >= 0 || type.indexOf("epub") >= 0 || type.indexOf("audio") >= 0)) {
 			acquisition = links[i];
 			break;
 		}
@@ -309,7 +320,7 @@ MayberrySource._parseJsonPublication = function(publication, feedUrl) {
 	if (!acquisition || !acquisition.href) return null;
 
 	var images = Array.isArray(publication.images) ? publication.images : [];
-	var cover = images.length ? this._absoluteUrl(images[0].href, feedUrl) : "";
+	var cover = images[0] ? this._absoluteUrl(images[0].href, feedUrl) : "";
 	var identifier = this._jsonText(metadata.identifier);
 	var identifierValue = this._identifierValue(identifier);
 	var displayIdentifier = this._displayIdentifier(identifier);
@@ -455,6 +466,7 @@ MayberrySource._parseBooks = function(feed) {
 	var self = this;
 	var results = [];
 	var seen = Object.create(null);
+	var publicationCount = 0;
 	function add(result) {
 		if (!result) return;
 		var key = String(result.id || result.url || (result.title + "|" + result.author)).toLowerCase();
@@ -466,6 +478,7 @@ MayberrySource._parseBooks = function(feed) {
 	}
 	function addPublications(group) {
 		if (!group || !Array.isArray(group.publications)) return;
+		publicationCount += group.publications.length;
 		for (var i = 0; i < group.publications.length; i++) {
 			add(self._parseJsonPublication(group.publications[i], feed.url));
 		}
@@ -473,6 +486,9 @@ MayberrySource._parseBooks = function(feed) {
 	if (feed.json) {
 		addPublications(feed.json);
 		if (Array.isArray(feed.json.groups)) feed.json.groups.forEach(addPublications);
+		if (publicationCount && !results.length) {
+			throw new Error("Mayberry listed publications, but none included both a title and a usable download link for your card.");
+		}
 		return results;
 	}
 	var entries = feed.doc.querySelectorAll("entry");
@@ -542,7 +558,7 @@ MayberrySource.getBookDetails = async function(bookId) {
 
 MayberrySource.getSettings = function() {
 	return [{ id: "user_id", label: "Mayberry User ID", type: "password", defaultValue: "",
-		description: "Required by Mayberry. Stored securely on this device; used as both username and password for its catalog and downloads." }];
+		description: "Use your library card ID. Search covers your own branch and branches that have shared their shelves with your card. A new card starts with no books." }];
 };
 
 MayberrySource.resolve = async function(item) {

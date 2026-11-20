@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.11",
+	version: "0.1.12",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
@@ -253,6 +253,49 @@ __cinderExport = {
 		return "";
 	},
 
+	// The mirror's book page is keyed by MD5. Its Download control issues a
+	// normal GET using the catalog file ID (the size cell, not the edition ID).
+	_fileMirrorUrl: function(page, md5, fileId) {
+		if (!/^[a-f0-9]{32}$/i.test(md5) || !/^\d+$/.test(fileId)) return "";
+		var match = /^https:\/\/libgen\.pw\/book\/([a-f0-9]{32})\/?(?:\?[^#]*)?$/i.exec(page || "");
+		return match && match[1].toLowerCase() === md5.toLowerCase() ? "https://libgen.pw/api/file/" + fileId : "";
+	},
+
+	_findFileMirror: function(node, md5, fileId) {
+		if (!node) return "";
+		var links = node.querySelectorAll("a[href]");
+		for (var i = 0; i < links.length; i++) {
+			var page = links[i].attr("href");
+			if (this._fileMirrorUrl(page, md5, fileId)) return page.split("?")[0];
+		}
+		return "";
+	},
+
+	_catalogGetUrl: function(raw, catalogUrl, md5) {
+		if (!raw || !/^[a-f0-9]{32}$/i.test(md5)) return "";
+		try {
+			var url = new URL(raw, catalogUrl);
+			return url.origin === new URL(catalogUrl).origin && !url.username && !url.password &&
+				url.pathname === "/get.php" && url.search.toLowerCase() === "?md5=" + md5.toLowerCase()
+				? url.href : "";
+		} catch (error) { return ""; }
+	},
+
+	_useStorageRedirect: function(primary, probe, md5) {
+		if (!probe.ok || !probe.responseUrl || primary.url === probe.responseUrl) return;
+		try {
+			var final = new URL(probe.responseUrl);
+			if (final.protocol === "https:" && /^cdn\d+\.booksdl\.lc$/i.test(final.hostname) &&
+				!final.port && !final.username && !final.password && final.pathname === "/get.php" &&
+				(final.searchParams.get("md5") || "").toLowerCase() === md5 && final.searchParams.get("key")) {
+				// Reopening the catalog dispatch can return 503 even while its
+				// exact signed storage URL returns the complete matching ebook.
+				primary.fallbackUrls = [primary.url];
+				primary.url = probe.responseUrl;
+			}
+		} catch (error) { /* Native clients do not always expose the redirect URL. */ }
+	},
+
 	_isRestrictedDistributionUrl: function(url) {
 		var lower = String(url || "").toLowerCase();
 		return (
@@ -461,6 +504,7 @@ __cinderExport = {
 				var format = this._detectSupportedFormat(cells[7].text(), sizeHref || titleHref);
 				if (!format) continue;
 				var sourceMd5 = this._firstMd5FromLinks(mirrorCell) || this._md5FromUrl(sizeHref) || this._md5FromUrl(titleHref);
+				var catalogFileLink = mirrorCell.querySelector("a[href*='get.php?']");
 				var fileId = this._fileIdFromUrl(sizeHref);
 				var detailId = this._fileIdFromUrl(titleHref);
 				var sourceId = sourceMd5 || fileId || detailId;
@@ -482,8 +526,10 @@ __cinderExport = {
 						source: "LibGen",
 					extra: {
 						directUrl: directUrl,
+						catalogGet: this._catalogGetUrl(catalogFileLink && catalogFileLink.attr("href"), catalogUrl, sourceMd5) || undefined,
 						detailUrl: detailUrl,
 						md5: sourceMd5 || undefined,
+						fileMirror: this._findFileMirror(mirrorCell, sourceMd5, fileId),
 						fileId: fileId || undefined,
 						detailId: detailId || undefined,
 						publisher: publisher || undefined,
@@ -649,7 +695,7 @@ __cinderExport = {
 			return { reason: "the server returned an empty file or a web page" };
 		}
 		var binary = /^(?:application\/(?:octet-stream|epub\+zip|pdf|(?:x-)?zip(?:-compressed)?|x-rar(?:-compressed)?|vnd\.rar|vnd\.comicbook\+(?:zip|rar)|x-cb[rz])|binary\/octet-stream)$/.test(type);
-		return { ok: binary, unknown: !binary, status: status };
+		return { ok: binary, unknown: !binary, status: status, responseUrl: response.url };
 	},
 
 	_fileGateways: function(html, md5) {
@@ -678,27 +724,52 @@ __cinderExport = {
 		var md5 = this._clean(extra.md5 || this._md5FromUrl(extra.directUrl)).toLowerCase();
 		var fileId = this._clean(extra.fileId);
 		var hasFile = /^[a-f0-9]{32}$/.test(md5) && /^\d+$/.test(fileId);
+		var mirrorUrl = this._fileMirrorUrl(extra.fileMirror, md5, fileId);
+		var catalogUrl = await this._getBaseUrl();
+		var catalogGet = this._catalogGetUrl(extra.catalogGet, catalogUrl, md5);
+		if (catalogGet) {
+			var advertised = this._resolvedDownload(item, catalogGet, item.url, false);
+			var advertisedProbe = await this._probeFile(catalogGet, advertised.headers, deadline);
+			if (advertisedProbe.ok) {
+				this._useStorageRedirect(advertised, advertisedProbe, md5);
+				if (mirrorUrl) advertised.fallbackUrls = (advertised.fallbackUrls || []).concat(mirrorUrl);
+				return advertised;
+			}
+		}
 		var primary, primaryError, probe;
 		try {
 			primary = await this._resolvePrimary(item, md5, hasFile, deadline);
 			if (!this._isKeyedDownloadUrl(primary.url) || (primary.downloadRequest && primary.downloadRequest.method === "POST")) return primary;
 			probe = await this._probeFile(primary.url, primary.headers, deadline);
-			if (probe.ok || (probe.unknown && !hasFile)) return primary;
+			this._useStorageRedirect(primary, probe, md5);
+			if ((probe.ok && (!hasFile || typeof extra.fileMirror === "string")) || (probe.unknown && !hasFile)) {
+				if (mirrorUrl) primary.fallbackUrls = (primary.fallbackUrls || []).concat(mirrorUrl);
+				return primary;
+			}
 		} catch (err) {
 			if (!hasFile || (err && err.name === "AbortError")) throw err;
 			primaryError = err;
 		}
 		if (hasFile) {
-			var fileUrl = await this._placeholderDownloadUrl(fileId, item.format, {}, await this._getBaseUrl());
+			var fileUrl = await this._placeholderDownloadUrl(fileId, item.format, {}, catalogUrl);
 			var urls = [];
 			try {
 				var file = await this._fetchPage(fileUrl, item.url, { timeout: 5500, retry: false, deadline: deadline });
 				urls = this._fileGateways(file.html, md5);
+				if (!mirrorUrl) {
+					var published = this._findFileMirror(cinder.parseHTML(file.html), md5, fileId);
+					mirrorUrl = this._fileMirrorUrl(published, md5, fileId);
+				}
 			} catch (metadataError) {
 				if (metadataError && metadataError.name === "AbortError") throw metadataError;
 				if (!primaryError) primaryError = metadataError;
 			}
 			var self = this;
+			if (mirrorUrl) urls.unshift(mirrorUrl);
+			if (probe && probe.ok) {
+				if (urls.length) primary.fallbackUrls = (primary.fallbackUrls || []).concat(urls);
+				return primary;
+			}
 			var checks = await Promise.all(urls.map(function(url) {
 				return self._probeFile(url, { "User-Agent": self._USER_AGENT }, deadline);
 			}));
@@ -707,8 +778,15 @@ __cinderExport = {
 			var available = urls.filter(function(_, i) { return checks[i].ok; });
 			var uncertain = urls.filter(function(_, i) { return checks[i].unknown && checks[i].status; });
 			var ordered = available.concat(uncertain);
-			if (ordered.length && (available.length || !probe || !(probe.unknown || probe.tryPrimaryGet))) {
+			var canTryPrimary = primary && probe && (probe.unknown || probe.tryPrimaryGet);
+			if (canTryPrimary && !available.length) {
+				if (ordered.length) primary.fallbackUrls = ordered;
+				return primary;
+			}
+			if (ordered.length) {
 				var result = this._resolvedDownload(item, ordered[0], "", false);
+				// A signed primary needs its own Referer. The app applies one set
+				// of headers to these public mirrors, so keep that URL separate.
 				if (ordered.length > 1) result.fallbackUrls = ordered.slice(1);
 				return result;
 			}

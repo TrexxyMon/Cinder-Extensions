@@ -2,24 +2,17 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { createRequire } = require('node:module');
 const { test } = require('node:test');
+const {parser, URL} = require('./cinder-native-parser.cjs');
 
 const root = path.resolve(__dirname, '..');
-const app = process.env.CINDER_APP || path.resolve(root, '../cinder');
-const appRequire = createRequire(path.join(app, 'package.json'));
-const ts = appRequire('typescript');
-const parser = { exports: {} };
-vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(app, 'src/extensions/HTMLParser.ts'), 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
-}).outputText, { exports: parser.exports, require: appRequire });
 
 function source(api = {}) {
   const context = vm.createContext({
     URL,
     setTimeout: fn => queueMicrotask(fn),
     cinder: {
-      ...parser.exports,
+      ...parser,
       normalizeText: String,
       resolveUrl: (url, base) => new URL(url, base).href,
       store: { get: async () => undefined },
@@ -64,7 +57,7 @@ const keyed = catalog + '/get.php?md5=' + md5 + '&key=test-key';
 const gateway = (host, hash = cid) => 'https://' + host + '/ipfs/' + hash +
   '?filename=Fixture{Doe, Jane}(2020, Fixture Press){100}.epub';
 const item = { id: 'fixture-table-' + md5 + '-epub', format: 'epub', title: 'Fixture', url: edition,
-  extra: { md5, fileId: '200', directUrl: landing } };
+  extra: { md5, fileId: '200', directUrl: landing, fileMirror: '' } };
 
 function fileMetadata(hash, id, mirrors) {
   const links = mirrors.map(href =>
@@ -175,4 +168,63 @@ test('LibGen respects Retry-After and definitive primary errors when no mirror s
     });
     await assert.rejects(extension.resolve(item), new RegExp('HTTP ' + status));
   }
+});
+
+const mirrorBook = 'https://libgen.pw/book/' + md5;
+const mirrorFile = 'https://libgen.pw/api/file/200';
+test('A catalog row preserves the same-file mirror for a later transfer failure even when the primary HEAD succeeds', async () => {
+  const { extension, unexpected } = downloadFixture({ probes: { [keyed]: 200 } });
+  const row = '<tr><td><a href="edition.php?id=100">Test Book</a></td><td>Author</td><td></td><td></td><td>English</td><td>320</td><td><a href="file.php?id=200">1 MB</a></td><td>EPUB</td><td><a href="' + landing + '">1</a><a href="' + mirrorBook + '?utm_source=libgen.li">4</a></td></tr>';
+  const [book] = await extension._parseResults('<table class="table-striped">' + row + '</table>');
+  assert.equal(book.extra.fileMirror, mirrorBook);
+  const result = await extension.resolve(book);
+  assert.equal(result.url, keyed);
+  assert.deepEqual(Array.from(result.fallbackUrls), [mirrorFile]);
+  assert.deepEqual(unexpected, []);
+});
+
+test('A healthy storage redirect becomes the transfer URL and keeps both original dispatch and published mirror as fallbacks', async () => {
+  const storage = 'https://cdn5.booksdl.lc/get.php?md5=' + md5 + '&key=storage-test';
+  for (const url of [storage, storage.replace(md5, otherMd5), storage.replace('.lc/', '.lc.example/'), storage.replace('https:', 'http:')]) {
+    const probe = {status:200, url, headers:{'content-type':'application/octet-stream'}};
+    const {extension} = downloadFixture({probes:{[keyed]:probe}});
+    const result = await extension.resolve({...item, extra:{...item.extra, fileMirror:mirrorBook}});
+    assert.equal(result.url, url === storage ? storage : keyed);
+    assert.deepEqual(Array.from(result.fallbackUrls), url === storage ? [keyed, mirrorFile] : [mirrorFile]);
+    assert.equal(result.headers.Referer, landing);
+  }
+});
+
+test('Saved results recover a published alternate by file ID even when there is no IPFS CID', async () => {
+  const file = '<a href="' + mirrorBook + '">Alternate mirror</a>';
+  const legacy = { ...item, extra:{md5, fileId:'200', directUrl:landing} };
+  for (const status of [200, 500]) {
+    const { extension, unexpected } = downloadFixture({ file, probes: { [keyed]:status, [mirrorFile]:200 } });
+    const result = await extension.resolve(legacy);
+    assert.equal(result.url, status === 200 ? keyed : mirrorFile);
+    if (status === 200) assert.deepEqual(Array.from(result.fallbackUrls), [mirrorFile]);
+    assert.deepEqual(unexpected, []);
+  }
+});
+
+test('Catalog rows that actually publish an unkeyed GET use the published file URL only for a binary response', async () => {
+  const published = catalog + '/get.php?md5=' + md5;
+  const row = '<tr><td><a href="edition.php?id=100">Test Book</a></td><td>Author</td><td></td><td></td><td>English</td><td></td><td><a href="file.php?id=200">1 MB</a></td><td>EPUB</td><td><a href="' + published + '">Libgen</a></td></tr>';
+  for (const htmlResponse of [false,true]) {
+    const {extension, unexpected} = downloadFixture({probes:{[keyed]:200,[published]:htmlResponse ? {status:200,headers:{'Content-Type':'text/html'}} : 200}});
+    const [book] = await extension._parseResults('<table>' + row + '</table>');
+    assert.equal(book.extra.catalogGet, published);
+    assert.equal((await extension.resolve(book)).url, htmlResponse ? keyed : published);
+    assert.deepEqual(unexpected, []);
+  }
+});
+
+test('Excluded mirrors cannot be introduced by a similarly named host, another hash or a denied download', async () => {
+  const file = '<a href="' + mirrorBook + '">Alternate</a>';
+  const { extension, unexpected } = downloadFixture({ file, probes: { [keyed]:404, [mirrorFile]:403 } });
+  assert.equal(extension._fileMirrorUrl(mirrorBook.replace('libgen.pw', 'libgen.pw.example'), md5, '200'), '');
+  assert.equal(extension._fileMirrorUrl(mirrorBook, otherMd5, '200'), '');
+  assert.equal(extension._fileMirrorUrl(mirrorBook, md5, '../other'), '');
+  await assert.rejects(extension.resolve(item), /HTTP 404/);
+  assert.deepEqual(unexpected, []);
 });

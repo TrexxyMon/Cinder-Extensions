@@ -3,11 +3,12 @@ const { readFileSync } = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
+const {parser, URL} = require('./cinder-native-parser.cjs');
 const root = path.resolve(__dirname, '..');
 const plain = value => JSON.parse(JSON.stringify(value));
 
 function loadSource(fetch, secureStore) {
- const context = vm.createContext({ URL, btoa, cinder: { fetch, secureStore } });
+ const context = vm.createContext({ URL, btoa, cinder: { ...parser, fetch, secureStore } });
  vm.runInContext(readFileSync(path.join(root, 'mayberry.js'), 'utf8'), context);
  return context.__cinderExport;
 }
@@ -32,7 +33,7 @@ test('Mayberry public manifest preserves identity, category and backwards-compat
  assert.equal(entries.length, 1);
  const meta = entries[0];
  const source = loadSource(async () => {throw Error('Unexpected network call');});
- assert.equal(meta.version, '0.1.4-cinder');
+ assert.equal(meta.version, '0.1.5-cinder');
  for(const field of ['id', 'name', 'version', 'description', 'language', 'contentType', 'excludeFromDefaultMetadataProviders']) assert.equal(meta[field], source[field]);
  assert.deepEqual(meta.contentTypes, plain(source.contentTypes));
  assert.equal(meta.contentType, 'books');
@@ -50,6 +51,7 @@ test('Search preserves stable IDs, direct downloads, covers and legacy metadata 
  const results = await source.search('Fixture & Book', 0);
  assert.equal(calls[0].url, 'https://mayberry.pub/opds/search?q=Fixture%20%26%20Book');
  assert.equal(calls[0].options.timeout, 15000);
+ assert.match(calls[0].options.headers.Accept, /^application\/atom\+xml/);
  assert.equal(results.length, 1);
  const item = results[0];
  assert.equal(item.id, 'urn:isbn:9780000000002');
@@ -81,6 +83,41 @@ test('Identical concurrent searches share a request and reuse the bounded feed c
  assert.equal(count, 1);
  for(let i=0;i<60;i++) source._rememberFeed('fixture-'+i, '{}');
  assert.equal(source._feedCacheOrder.length, 48);
+});
+
+test('A localized OPDS 2 title and contributor survive a search when the server chooses JSON', async () => {
+ const p = publication();
+ p.metadata.title = {fr:'Un livre', en:'A book'};
+ p.metadata.author = {name:{'fr-CA':'Auteur'}};
+ p.links.unshift({rel:'http://opds-spec.org/acquisition'});
+ p.images = [null];
+ const source = loadSource(async () => ({status:200,data:JSON.stringify({metadata:{title:'Search'}, publications:[p]})}));
+ const [book] = await source.search('A book', 0);
+ assert.equal(book.title, 'A book');
+ assert.equal(book.author, 'Auteur');
+ assert.equal(book.url, 'https://mayberry.pub/files/fixture.epub');
+});
+
+test('Advertised Atom search yields an authorized shelf book, its cover, and the correct download', async () => {
+ const xml = '<feed xmlns="http://www.w3.org/2005/Atom"><title>Mayberry Search</title><entry><id>urn:isbn:9780000000002</id><title>Pride and Prejudice</title><author><name>Jane Austen</name></author><link rel="http://opds-spec.org/image" href="/covers/fixture"/><link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="/files/fixture.epub"/></entry></feed>';
+ const source = loadSource(async (url, options) => {
+  assert.equal(url, 'https://mayberry.pub/opds/search?q=Pride%20and%20Prejudice');
+  assert.match(options.headers.Accept, /^application\/atom\+xml/);
+  return {status:200, data:xml};
+ }, {get:async () => 'fixture'});
+ const [book] = await source.search('Pride and Prejudice',0);
+ assert.equal(book.title, 'Pride and Prejudice');
+ assert.equal(book.author, 'Jane Austen');
+ assert.equal(book.cover, 'https://mayberry.pub/covers/fixture');
+ const download = await source.resolve(book);
+ assert.equal(download.url, 'https://mayberry.pub/files/fixture.epub');
+ assert.equal(download.headers.Authorization, 'Basic ' + btoa('fixture:fixture'));
+});
+
+test('Catalog publications without download links are distinguishable from a genuinely empty shelf', async () => {
+ const p = publication(); p.links = [];
+ const source = loadSource(async () => ({status:200,data:JSON.stringify({metadata:{title:'Search'}, publications:[p]})}));
+ await assert.rejects(source.search('Pride',0), /Mayberry listed publications/);
 });
 
 test('All discovery shelves and search pagination retain their original endpoints', async () => {
