@@ -172,7 +172,7 @@ test("LibGen search still parses supported table results with stable IDs and met
 	const requests = [];
 	const source = loadSource("libgen", async (url, options) => {
 		requests.push({ url, options }); return { status: 200, data: "table fixture" };
-	}, { parseHTML: () => doc });
+	}, { parseHTML: () => doc, store: { get: async key => key === "availability" ? "all" : undefined } });
 	const results = plain(await source.search("A Test Title", 0));
 	assert.equal(results.length, 1);
 	assert.equal(results[0].id, "fixture-table-" + md5 + "-epub");

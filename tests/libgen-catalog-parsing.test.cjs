@@ -10,6 +10,7 @@ const root = path.resolve(__dirname, '..');
 function source(api = {}) {
   const context = vm.createContext({
     URL,
+    atob,
     setTimeout: fn => queueMicrotask(fn),
     cinder: {
       ...parser,
@@ -50,7 +51,8 @@ test('search keeps separate same-size files in Book Details and preserves the ed
   const graphic = 'The Son of Neptune (Graphic Novel)', prose = 'The Son of Neptune';
   const html = '<table class="table-striped">' + row(201, graphic) + row(202, prose) + row(203, prose) + '</table>';
   const seen = [];
-  const extension = source({ fetch: async url => { seen.push(url); return { status: 200, data: html }; } });
+  const extension = source({ store: { get: async k => k === 'availability' ? 'all' : undefined },
+    fetch: async url => { seen.push(url); return { status: 200, data: html }; } });
   const results = await extension.search('Heroes of Olympus, Book Two: The Son of Neptune', 0);
   assert.equal(seen.length, 1);
   assert.match(seen[0], /The\+Son\+of\+Neptune/i);
@@ -70,6 +72,34 @@ const otherMd5 = '2'.repeat(32);
 const cid = 'bafykbzaceaallwghbxwfa2qmnxdajkztjc5nbqz3pzwcgucqxc33mdz63ky3s';
 const otherCid = 'bafykbzaceaallwghbxwfa2qmnxdajkztjc5nbqz3pzwcgucqxc33mdz63ky4s';
 const catalog = 'https://libgen.li';
+
+test('verified search excludes HTTP errors and HTML, preserves the exact file and reuses its successful GET route', async () => {
+  const rows = ['1', '2', '3'].map((n, i) => ({ id: n, title: 'Example', size: '1 MB', format: 'epub',
+    url: catalog + '/file.php?id=' + n, extra: { md5: n.repeat(32), fileId: n,
+      fileMirror: 'https://libgen.pw/book/' + n.repeat(32), catalogGet: catalog + '/get.php?md5=' + n.repeat(32) } }));
+  const prefix = Buffer.from('PK\x03\x04' + 'mimetypeapplication/epub+zip').toString('base64');
+  const html = Buffer.from('<html>File unavailable</html>').toString('base64');
+  const extension = source({ fetchFilePrefix: async url => url.endsWith('/2') ? { status: 200, data: prefix } :
+    url.endsWith('/3') ? { status: 200, data: html } : { status: 503, data: '' } });
+  extension._resolvePrimary = async () => { throw Error('Unavailable'); };
+  assert.deepEqual(Array.from(await extension._availableResults(rows, Date.now() + 5000), r => r.id), ['2']);
+  assert.equal((await extension.resolve(rows[1])).url, 'https://libgen.pw/api/file/2');
+  await assert.rejects(extension._availableResults([rows[0]], Date.now()+1000), /No files on this page passed/);
+});
+
+test('older Cinder checks a small advertised mirror with GET even when HEAD serves HTML, and skips oversized files', async () => {
+  const calls = [];
+  const extension = source({ fetch: async () => ({ status: 200, headers: { 'content-type': 'text/html' } }),
+    fetchBase64: async (url, opts) => { calls.push([url, opts.headers.Range]); return {status: 200, data: Buffer.from('%PDF-1.4').toString('base64')}; } });
+  const row = { id: 'fixture', format: 'pdf', title: 'Example', size: '1 MB', url: catalog + '/file.php?id=12',
+    extra: { fileId: '12', md5, fileMirror: 'https://libgen.pw/book/' + md5 } };
+  extension._resolvePrimary = async () => { throw Error('Storage 500'); };
+  const got = await extension._availableResults([row], Date.now()+5000);
+  assert.equal(got[0].id, row.id);
+  assert.deepEqual(calls, [['https://libgen.pw/api/file/12','bytes=0-127']]);
+  await assert.rejects(extension._availableResults([{...row, id:'large', size:'38 MB'}], Date.now()+5000), /No files/);
+  assert.equal(calls.length,1);
+});
 const landing = catalog + '/ads.php?md5=' + md5;
 const edition = catalog + '/edition.php?id=100';
 const filePage = catalog + '/file.php?id=200';
