@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.8",
+	version: "0.1.9",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
@@ -19,6 +19,7 @@ __cinderExport = {
 		discover: false,
 		download: true,
 		resolve: true,
+		resolveOnDownload: true,
 		searchDownloads: true,
 		manga: false,
 	},
@@ -108,7 +109,7 @@ __cinderExport = {
 		return (await this._getSetting("base_url", this._DEFAULT_BASE_URL)).replace(/\/+$/, "");
 	},
 
-	_fetchHtml: async function(url, referer, requestOptions) {
+	_fetchPage: async function(url, referer, requestOptions) {
 		requestOptions = requestOptions || {};
 		var attempts = requestOptions.retry === false ? 1 : 2;
 		var headers = {
@@ -121,12 +122,13 @@ __cinderExport = {
 		if (referer) headers.Referer = referer;
 		var resp = null;
 		for (var attempt = 0; attempt < attempts; attempt++) {
+			var timeout = this._remainingTime(requestOptions.deadline, requestOptions.timeout || 30000);
 			resp = await cinder.fetch(url, {
 				headers: headers,
-				timeout: requestOptions.timeout || 30000,
+				timeout: timeout,
 			});
 			if (resp && resp.status >= 200 && resp.status < 400) {
-				return resp.data || "";
+				return { html: resp.data || "", url: resp.url || url };
 			}
 			var status = resp ? Number(resp.status) || 0 : 0;
 			if (attempt + 1 < attempts && (status === 0 || status >= 500)) {
@@ -140,6 +142,23 @@ __cinderExport = {
 			? "LibGen server did not return an HTTP response (connection failed or timed out)"
 			: "LibGen server returned HTTP " + finalStatus;
 		throw new Error(prefix + ": " + url);
+	},
+
+	_fetchHtml: async function(url, referer, options) {
+		return (await this._fetchPage(url, referer, options)).html;
+	},
+
+	_remainingTime: function(deadline, limit) {
+		if (!deadline) return limit;
+		var remaining = deadline - Date.now();
+		if (remaining <= 0) throw new Error("LibGen timed out contacting the file servers. Retry or choose another edition.");
+		return Math.min(limit, remaining);
+	},
+
+	_pageLink: function(pageUrl, value) {
+		if (!value) return "";
+		var url = cinder.resolveUrl(this._decodeUrlText(value), pageUrl);
+		return /^https?:\/\//i.test(url) ? url : "";
 	},
 
 	_searchUrl: async function(query, page) {
@@ -278,8 +297,8 @@ __cinderExport = {
 			seen[candidate] = true;
 			if (!this._isKeyedDownloadUrl(candidate)) continue;
 			var candidateMd5 = this._md5FromUrl(candidate).toLowerCase();
-			if (expected && candidateMd5 && candidateMd5 !== expected) continue;
-			return this._absUrl(baseUrl, candidate);
+			if (expected && candidateMd5 !== expected) continue;
+			return this._pageLink(baseUrl, candidate);
 		}
 
 		return "";
@@ -293,7 +312,7 @@ __cinderExport = {
 		var results = [];
 
 		for (var i = 0; i < matches.length; i++) {
-			var candidate = this._absUrl(baseUrl, this._decodeUrlText(matches[i]));
+			var candidate = this._pageLink(baseUrl, matches[i]);
 			if (!candidate || seen[candidate]) continue;
 			seen[candidate] = true;
 			if (!this._isHtmlDownloadPageUrl(candidate)) continue;
@@ -329,7 +348,7 @@ __cinderExport = {
 		};
 	},
 
-	_resolveHtmlDownloadPage: async function(item, pageUrl, referer, md5, visited) {
+	_resolveHtmlDownloadPage: async function(item, pageUrl, referer, md5, visited, deadline) {
 		var baseUrl = await this._getBaseUrl();
 		visited = visited || {};
 		var visitKey = this._clean(pageUrl).toLowerCase();
@@ -338,13 +357,15 @@ __cinderExport = {
 		}
 		if (Object.keys(visited).length >= 8) throw new Error("LibGen returned too many download redirects. Try another result.");
 		visited[visitKey] = true;
-		var html = await this._fetchHtml(pageUrl, referer || baseUrl + "/");
-		var keyedUrl = this._extractKeyedDownloadUrl(html, baseUrl, md5 || this._md5FromUrl(pageUrl));
+		var page = await this._fetchPage(pageUrl, referer || baseUrl + "/", { timeout: 6000, deadline: deadline });
+		var html = page.html;
+		pageUrl = page.url;
+		var keyedUrl = this._extractKeyedDownloadUrl(html, pageUrl, md5 || this._md5FromUrl(pageUrl));
 		if (keyedUrl) {
 			return this._resolvedDownload(item, keyedUrl, pageUrl, false);
 		}
 
-		var nestedDownloadPages = this._extractHtmlDownloadPageUrls(html, baseUrl, md5 || this._md5FromUrl(pageUrl));
+		var nestedDownloadPages = this._extractHtmlDownloadPageUrls(html, pageUrl, md5 || this._md5FromUrl(pageUrl));
 		for (var nestedIndex = 0; nestedIndex < nestedDownloadPages.length; nestedIndex++) {
 			var nestedDownloadPage = nestedDownloadPages[nestedIndex];
 			if (!nestedDownloadPage || nestedDownloadPage === pageUrl) continue;
@@ -355,6 +376,7 @@ __cinderExport = {
 					pageUrl,
 					md5 || this._md5FromUrl(nestedDownloadPage),
 					visited,
+					deadline,
 				);
 			} catch (nestedError) {
 				cinder.log("[LibGen] Alternate download page failed; trying the next candidate");
@@ -362,7 +384,7 @@ __cinderExport = {
 		}
 
 		var doc = cinder.parseHTML(html);
-		var formDownload = await this._extractFormDownload(doc, pageUrl, baseUrl);
+		var formDownload = await this._extractFormDownload(doc, pageUrl);
 		if (formDownload) {
 			var formFormat = this._supportedFormat(item && item.format);
 			if (!formFormat) {
@@ -375,20 +397,23 @@ __cinderExport = {
 		throw new Error("LibGen did not expose a direct ebook file URL for this result.");
 	},
 
-	_placeholderDetailUrl: async function(id, format) {
+	_placeholderDetailUrl: async function(id, format, catalogUrl) {
 		var template = await this._getSetting("placeholder_detail_template", this._DEFAULT_DETAIL_TEMPLATE);
+		if (template === this._DEFAULT_DETAIL_TEMPLATE && catalogUrl) template = catalogUrl + "/edition.php?id={id}";
 		return this._renderTemplate(template, {
 			id: id,
 			format: format || "epub",
 		});
 	},
 
-	_placeholderDownloadUrl: async function(id, format, tokens) {
+	_placeholderDownloadUrl: async function(id, format, tokens, catalogUrl) {
 		tokens = tokens || {};
 		var md5 = this._clean(tokens.md5 || "");
 		var template = md5
 			? await this._getSetting("placeholder_md5_download_template", this._DEFAULT_MD5_DOWNLOAD_TEMPLATE)
 			: await this._getSetting("placeholder_download_template", this._DEFAULT_DOWNLOAD_TEMPLATE);
+		if (catalogUrl && template === this._DEFAULT_MD5_DOWNLOAD_TEMPLATE) template = catalogUrl + "/ads.php?md5={md5}";
+		if (catalogUrl && template === this._DEFAULT_DOWNLOAD_TEMPLATE) template = catalogUrl + "/file.php?id={id}";
 		return this._renderTemplate(template, {
 			id: id,
 			format: format || "epub",
@@ -396,7 +421,7 @@ __cinderExport = {
 		});
 	},
 
-	_parseLegacyTableRows: async function(doc) {
+	_parseLegacyTableRows: async function(doc, catalogUrl) {
 		var rows = doc.querySelectorAll("table.table-striped tbody tr");
 		if (!rows || rows.length === 0) rows = doc.querySelectorAll("table.table-striped tr");
 		if (!rows || rows.length === 0) rows = doc.querySelectorAll("table tr");
@@ -442,8 +467,8 @@ __cinderExport = {
 				if (seen[id]) continue;
 				seen[id] = true;
 
-				var detailUrl = await this._placeholderDetailUrl(detailId || fileId || sourceId, format);
-				var directUrl = await this._placeholderDownloadUrl(sourceId, format, { md5: sourceMd5 });
+				var detailUrl = await this._placeholderDetailUrl(detailId || fileId || sourceId, format, catalogUrl);
+				var directUrl = await this._placeholderDownloadUrl(sourceId, format, { md5: sourceMd5 }, catalogUrl);
 				results.push({
 					id: id,
 					title: title,
@@ -481,7 +506,7 @@ __cinderExport = {
 		);
 		var doc = cinder.parseHTML(html);
 		var nodes = doc.querySelectorAll(selector);
-		var results = await this._parseLegacyTableRows(doc);
+		var results = await this._parseLegacyTableRows(doc, baseUrl);
 		var seen = {};
 		for (var existingIndex = 0; existingIndex < results.length; existingIndex++) {
 			seen[results[existingIndex].id] = true;
@@ -548,10 +573,10 @@ __cinderExport = {
 		return results.slice(0, 50);
 	},
 
-	_extractFormDownload: async function(doc, pageUrl, baseUrl) {
+	_extractFormDownload: async function(doc, pageUrl) {
 		var form = doc.querySelector("form[data-cinder-download], form.download, form[action*='get.php']");
 		if (!form) return null;
-		var action = this._absUrl(baseUrl, form.attr("action") || pageUrl);
+		var action = this._pageLink(pageUrl, form.attr("action") || pageUrl);
 		if (!action) return null;
 
 		var method = this._clean(form.attr("method") || "GET").toUpperCase();
@@ -595,7 +620,97 @@ __cinderExport = {
 		return await this._parseResults(html);
 	},
 
+	_probeFile: async function(url, headers, deadline) {
+		var timeout = this._remainingTime(deadline, 4500);
+		var response;
+		try {
+			response = await cinder.fetch(url, { method: "HEAD", headers: headers, timeout: timeout });
+		} catch (err) {
+			if (err && err.name === "AbortError") throw err;
+		}
+		var status = response ? Number(response.status) || 0 : 0;
+		// Some storage servers allow GET but do not implement HEAD.
+		if (!status || status === 405 || status === 501) return { unknown: true, status: status };
+		if (status < 200 || status >= 300) return { status: status };
+		var metadata = {};
+		Object.keys(response.headers || {}).forEach(function(name) {
+			metadata[name.toLowerCase()] = String(response.headers[name]).toLowerCase().trim();
+		});
+		var type = (metadata["content-type"] || "").split(";")[0].trim();
+		if (status === 204 || metadata["content-length"] === "0" || /^(?:text\/|image\/|audio\/|video\/|application\/(?:json|xml|xhtml\+xml)$)/.test(type)) {
+			return { reason: "the server returned an empty file or a web page" };
+		}
+		var binary = /^(?:application\/(?:octet-stream|epub\+zip|pdf|(?:x-)?zip(?:-compressed)?|x-rar(?:-compressed)?|vnd\.rar|vnd\.comicbook\+(?:zip|rar)|x-cb[rz])|binary\/octet-stream)$/.test(type);
+		return { ok: binary, unknown: !binary, status: status };
+	},
+
+	_fileGateways: function(html, md5) {
+		// The edition page can contain multiple EPUBs with different hashes.
+		// Only use the identity fields on the single file's own metadata page.
+		var fileHash = html.match(/<strong>\s*MD5\s*:\s*<\/strong>\s*<\/label>\s*([a-f0-9]{32})\s*</i);
+		var fileCid = html.match(/<strong>\s*IPFS CID\s*:\s*<\/strong>\s*<\/label>\s*(b[a-z2-7]{20,}|Qm[1-9A-HJ-NP-Za-km-z]{44})\s*</i);
+		if (!fileHash || fileHash[1].toLowerCase() !== md5 || !fileCid) return [];
+		var urls = [];
+		var seenHosts = {};
+		cinder.parseHTML(html).querySelectorAll("a[href]").forEach(function(link) {
+			var raw = link.attr("href") || "";
+			if (!/^https:\/\//i.test(raw)) return;
+			var href = cinder.resolveUrl(raw, raw);
+			var match = href.match(/^https:\/\/(cloudflare-ipfs\.com|gateway\.ipfs\.io|gateway\.pinata\.cloud|ipfs\.io)\/ipfs\/([A-Za-z0-9]+)(?:\?[^#\s]*)?$/i);
+			if (!match || match[2] !== fileCid[1] || seenHosts[match[1].toLowerCase()]) return;
+			seenHosts[match[1].toLowerCase()] = true;
+			urls.push(href);
+		});
+		return urls;
+	},
+
 	resolve: async function(item) {
+		var deadline = Date.now() + 28000;
+		var extra = item.extra || {};
+		var md5 = this._clean(extra.md5 || this._md5FromUrl(extra.directUrl)).toLowerCase();
+		var fileId = this._clean(extra.fileId);
+		var hasFile = /^[a-f0-9]{32}$/.test(md5) && /^\d+$/.test(fileId);
+		var primary, primaryError, probe;
+		try {
+			primary = await this._resolvePrimary(item, md5, hasFile, deadline);
+			if (!this._isKeyedDownloadUrl(primary.url) || (primary.downloadRequest && primary.downloadRequest.method === "POST")) return primary;
+			probe = await this._probeFile(primary.url, primary.headers, deadline);
+			if (probe.ok || (probe.unknown && !hasFile)) return primary;
+		} catch (err) {
+			if (!hasFile || (err && err.name === "AbortError")) throw err;
+			primaryError = err;
+		}
+		if (hasFile) {
+			var fileUrl = await this._placeholderDownloadUrl(fileId, item.format, {}, await this._getBaseUrl());
+			var urls = [];
+			try {
+				var file = await this._fetchPage(fileUrl, item.url, { timeout: 5500, retry: false, deadline: deadline });
+				urls = this._fileGateways(file.html, md5);
+			} catch (metadataError) {
+				if (metadataError && metadataError.name === "AbortError") throw metadataError;
+				if (!primaryError) primaryError = metadataError;
+			}
+			var self = this;
+			var checks = await Promise.all(urls.map(function(url) {
+				return self._probeFile(url, { "User-Agent": self._USER_AGENT }, deadline);
+			}));
+			// Keep ambiguous HEAD results available for an actual GET after
+			// confirmed mirrors. A timeout/DNS failure alone is not a healthy mirror.
+			var available = urls.filter(function(_, i) { return checks[i].ok; });
+			var uncertain = urls.filter(function(_, i) { return checks[i].unknown && checks[i].status; });
+			var ordered = available.concat(uncertain);
+			if (ordered.length && (available.length || !primary || !probe || !probe.unknown)) {
+				var result = this._resolvedDownload(item, ordered[0], "", false);
+				if (ordered.length > 1) result.fallbackUrls = ordered.slice(1);
+				return result;
+			}
+		}
+		if (primary && probe && probe.unknown) return primary;
+		var reason = probe ? (probe.reason || "HTTP " + probe.status) : (primaryError && primaryError.message);
+		throw new Error("LibGen could not serve this file" + (reason ? " (" + reason + ")" : "") + ". Retry later or choose another edition.");
+	},
+
+	_resolvePrimary: async function(item, md5, hasFile, deadline) {
 		var baseUrl = await this._getBaseUrl();
 		var directUrl = this._absUrl(baseUrl, item && item.extra ? item.extra.directUrl : "");
 		if (this._isRestrictedDistributionUrl(directUrl)) {
@@ -613,9 +728,10 @@ __cinderExport = {
 						item,
 						directUrl,
 						item.url,
-						this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(directUrl),
+						md5 || this._md5FromUrl(directUrl), {}, deadline,
 					);
 				} catch (directError) {
+					if (hasFile || (directError && directError.name === "AbortError")) throw directError;
 					cinder.log("[LibGen] Primary download page failed; trying the result detail page");
 				}
 			} else {
@@ -627,10 +743,14 @@ __cinderExport = {
 		if (!pageUrl) throw new Error("LibGen result has no detail URL to resolve.");
 
 		cinder.log("[LibGen] Resolve: " + pageUrl);
-		var html = await this._fetchHtml(pageUrl);
+		var page = await this._fetchPage(pageUrl, undefined, { timeout: 6000, deadline: deadline });
+		var html = page.html;
+		pageUrl = page.url;
+		var keyedUrl = this._extractKeyedDownloadUrl(html, pageUrl, md5);
+		if (keyedUrl) return this._resolvedDownload(item, keyedUrl, pageUrl, false);
 		var nestedDownloadPages = this._extractHtmlDownloadPageUrls(
 			html,
-			baseUrl,
+			pageUrl,
 			this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(pageUrl),
 		);
 		var nestedError = null;
@@ -643,6 +763,7 @@ __cinderExport = {
 					nestedDownloadPage,
 					pageUrl,
 					this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(nestedDownloadPage),
+					{}, deadline,
 				);
 			} catch (candidateError) {
 				nestedError = candidateError;
@@ -659,7 +780,7 @@ __cinderExport = {
 		var href = link
 			? (link.attr("data-url") || link.attr("data-href") || link.attr("href") || "")
 			: "";
-		href = this._absUrl(baseUrl, href);
+		href = this._pageLink(pageUrl, href);
 		if (this._isRestrictedDistributionUrl(href)) {
 			var hrefMd5 = this._md5FromUrl(href) || this._clean(item && item.extra ? item.extra.md5 : "");
 			href = await this._placeholderDownloadUrl(
@@ -675,12 +796,13 @@ __cinderExport = {
 					href,
 					pageUrl,
 					this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(href),
+					{}, deadline,
 				);
 			}
 			return this._resolvedDownload(item, href, pageUrl, this._isHtmlDownloadPageUrl(href));
 		}
 
-		var formDownload = await this._extractFormDownload(doc, pageUrl, baseUrl);
+		var formDownload = await this._extractFormDownload(doc, pageUrl);
 		if (formDownload) {
 			var formFormat = this._supportedFormat(item && item.format);
 			if (!formFormat) {

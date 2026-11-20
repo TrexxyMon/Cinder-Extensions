@@ -7,6 +7,7 @@ const { test } = require("node:test");
 function loadSource(id, fetch, extra = {}) {
 	const cinder = {
 		fetch,
+		resolveUrl: (url, base) => new URL(url, base).href,
 		normalizeText: (value) => String(value || ""),
 		store: { get: async () => undefined },
 		parseHTML: () => ({ querySelector: () => null, querySelectorAll: () => [] }),
@@ -32,13 +33,14 @@ test("LibGen sends the detail Referer to its otherwise-empty download landing pa
 	const calls = [];
 	const source = loadSource("libgen", async (url, options) => {
 		calls.push({ url, options });
+		if (options.method === "HEAD") return { status: 200, headers: { "content-type": "application/octet-stream" } };
 		return { status: 200, data: options.headers.Referer === detailUrl
 			? '<a href="' + directUrl + '">GET</a>' : "" };
 	});
 	assert.deepEqual(plain(await source.resolve(libgenItem)), {
 		url: directUrl, fileName: "Test Book.epub", headers: { Referer: adsUrl, "User-Agent": source._USER_AGENT },
 	});
-	assert.equal(calls.length, 1);
+	assert.equal(calls.length, 2);
 	assert.equal(calls[0].url, adsUrl);
 	assert.equal(calls[0].options.headers.Referer, detailUrl);
 });
@@ -53,13 +55,35 @@ test("LibGen preserves Referer through a transient failure and nested download p
 			? '<a href="' + nested + '">File</a>' : '<a href="' + directUrl + '">GET</a>' };
 	});
 	assert.equal((await source.resolve(libgenItem)).url, directUrl);
-	assert.deepEqual(calls, [[adsUrl, detailUrl], [adsUrl, detailUrl], [nested, adsUrl]]);
+	assert.deepEqual(calls, [[adsUrl, detailUrl], [adsUrl, detailUrl], [nested, adsUrl], [directUrl, nested]]);
 });
 
 test("LibGen does not choose another file hash when resolving a saved result", async () => {
 	const wrong = directUrl.replace(md5, otherMd5);
 	const source = loadSource("libgen", async () => ({ status: 200, data: '<a href="' + wrong + '">GET</a>' }));
 	await assert.rejects(source._resolveHtmlDownloadPage(libgenItem, adsUrl, detailUrl, md5), /did not expose/);
+});
+
+test("LibGen resolves a relative file on the final mirror and accepts GET-only storage", async () => {
+	const page = "https://catalog.example/mirror/ads.php?md5=" + md5;
+	const expected = "https://catalog.example/mirror/get.php?md5=" + md5 + "&key=fresh";
+	const source = loadSource("libgen", async (url, options) => {
+		if (url === adsUrl) return { status: 200, url: page, data: '<a href="./get.php?md5=' + md5 + '&amp;key=fresh">GET</a>' };
+		assert.equal(url, expected);
+		assert.equal(options.method, "HEAD");
+		assert.equal(options.headers.Referer, page);
+		return { status: 405 };
+	});
+	const resolved = await source.resolve(libgenItem);
+	assert.equal(resolved.url, expected);
+	assert.equal(resolved.headers.Referer, page);
+});
+
+test("LibGen rejects an HTML file-server response even when it reports HTTP 200", async () => {
+	const source = loadSource("libgen", async (_url, options) => options.method === "HEAD"
+		? { status: 200, headers: { "Content-Type": "text/html; charset=UTF-8" } }
+		: { status: 200, data: '<a href="' + directUrl + '">GET</a>' });
+	await assert.rejects(source.resolve(libgenItem), /web page.*another edition/i);
 });
 
 test("LibGen keeps the existing direct URL and supported-format contract", async () => {
