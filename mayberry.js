@@ -2,7 +2,7 @@ var MayberrySource = {};
 
 MayberrySource.id = "mayberry";
 MayberrySource.name = "Mayberry";
-MayberrySource.version = "0.1.3-cinder";
+MayberrySource.version = "0.1.4-cinder";
 MayberrySource.icon = "MB";
 MayberrySource.description = "Search and download EPUB books from the federated Mayberry library network.";
 MayberrySource.contentType = "books";
@@ -95,9 +95,10 @@ MayberrySource._parseFeedPayload = function(data, url) {
 	var value = String(data || "").trim();
 	if (value.charAt(0) === "{") {
 		var json = JSON.parse(value);
-		if (json && typeof json === "object" && json.metadata) {
-			return { json: json, url: url };
+		if (!json.metadata || typeof json.metadata !== "object" || Array.isArray(json.metadata)) {
+			throw new Error("Mayberry returned an invalid OPDS catalog.");
 		}
+		return { json: json, url: url };
 	}
 	return { doc: cinder.parseXML(value), url: url };
 };
@@ -168,8 +169,8 @@ MayberrySource._fetchFeed = async function(pathOrUrl, maxAgeMs) {
 		var data = await pending;
 		await this._headers(url);
 		if (this._authIdentity !== identity) throw new Error("Mayberry account changed. Please retry.");
-		this._rememberFeed(url, data);
 		var feed = this._parseFeedPayload(data, url);
+		this._rememberFeed(url, data);
 		feed.authHeaders = headers.Authorization ? { Authorization: headers.Authorization } : undefined;
 		return feed;
 	} finally {
@@ -349,7 +350,6 @@ MayberrySource._parseJsonPublication = function(publication, feedUrl) {
 			downloadUrl: downloadUrl,
 		},
 	};
-	this._rememberDetails(result);
 	return result;
 };
 
@@ -448,40 +448,36 @@ MayberrySource._parseEntry = function(entry, feedUrl) {
 			downloadUrl: absoluteDownloadUrl,
 		},
 	};
-	this._rememberDetails(result);
 	return result;
 };
 
 MayberrySource._parseBooks = function(feed) {
 	var self = this;
-	var decorate = function(result) {
-		if (result && feed.authHeaders && self._isOwnOrigin(result.cover)) result.coverHeaders = feed.authHeaders;
+	var results = [];
+	var seen = Object.create(null);
+	function add(result) {
+		if (!result) return;
+		var key = String(result.id || result.url || (result.title + "|" + result.author)).toLowerCase();
+		if (seen[key]) return;
+		seen[key] = true;
+		if (feed.authHeaders && self._isOwnOrigin(result.cover)) result.coverHeaders = feed.authHeaders;
 		self._rememberDetails(result);
-		return result;
-	};
-	if (feed.json && Array.isArray(feed.json.publications)) {
-		var jsonResults = [];
-		var jsonSeen = {};
-		for (var publicationIndex = 0; publicationIndex < feed.json.publications.length; publicationIndex++) {
-			var jsonResult = this._parseJsonPublication(feed.json.publications[publicationIndex], feed.url);
-			if (!jsonResult) continue;
-			var jsonKey = String(jsonResult.id || jsonResult.url || (jsonResult.title + "|" + jsonResult.author)).toLowerCase();
-			if (jsonSeen[jsonKey]) continue;
-			jsonSeen[jsonKey] = true;
-			jsonResults.push(decorate(jsonResult));
+		results.push(result);
+	}
+	function addPublications(group) {
+		if (!group || !Array.isArray(group.publications)) return;
+		for (var i = 0; i < group.publications.length; i++) {
+			add(self._parseJsonPublication(group.publications[i], feed.url));
 		}
-		return jsonResults;
+	}
+	if (feed.json) {
+		addPublications(feed.json);
+		if (Array.isArray(feed.json.groups)) feed.json.groups.forEach(addPublications);
+		return results;
 	}
 	var entries = feed.doc.querySelectorAll("entry");
-	var results = [];
-	var seen = {};
 	for (var i = 0; i < entries.length; i++) {
-		var result = this._parseEntry(entries[i], feed.url);
-		if (!result) continue;
-		var key = String(result.id || result.url || (result.title + "|" + result.author)).toLowerCase();
-		if (seen[key]) continue;
-		seen[key] = true;
-		results.push(decorate(result));
+		add(this._parseEntry(entries[i], feed.url));
 	}
 	return results;
 };

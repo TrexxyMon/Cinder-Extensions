@@ -32,7 +32,7 @@ test('Mayberry public manifest preserves identity, category and backwards-compat
  assert.equal(entries.length, 1);
  const meta = entries[0];
  const source = loadSource(async () => {throw Error('Unexpected network call');});
- assert.equal(meta.version, '0.1.3-cinder');
+ assert.equal(meta.version, '0.1.4-cinder');
  for(const field of ['id', 'name', 'version', 'description', 'language', 'contentType', 'excludeFromDefaultMetadataProviders']) assert.equal(meta[field], source[field]);
  assert.deepEqual(meta.contentTypes, plain(source.contentTypes));
  assert.equal(meta.contentType, 'books');
@@ -107,6 +107,46 @@ test('Connection checks validate the catalog rather than accepting a generic HTM
  await assert.rejects(source.testConnection(), /web page instead of its OPDS catalog/);
 });
 
+test('An invalid JSON catalog fails clearly and a corrected response is fetched on retry', async () => {
+ let count = 0;
+ const source = loadSource(async () => ++count === 1
+  ? {status:200, data:JSON.stringify({metadata:null, links:[]})}
+  : response());
+ await assert.rejects(source.search('test', 0), /invalid OPDS catalog/);
+ assert.equal((await source.search('test', 0)).length, 1);
+ assert.equal(count, 2);
+});
+
+test('The settings connection check accepts authenticated OPDS navigation and empty search results', async () => {
+ for (const catalog of [{navigation:[{href:'/opds/new',title:'New Arrivals'}]}, {links:[]}, {groups:[]}]) {
+  const source = loadSource(async (url, options) => {
+   assert.equal(url, 'https://mayberry.pub/opds/search?q=test');
+   assert.equal(options.headers.Authorization, 'Basic ' + btoa('fixture:fixture'));
+   return {status:200, data:JSON.stringify({metadata:{title:'Mayberry Search'}, ...catalog})};
+  }, {get:async () => 'fixture'});
+  assert.deepEqual(plain(await source.search('test', 0)), []);
+ }
+});
+
+test('Search and discovery return grouped publications and preserve the first copy and its authenticated cover', async () => {
+ const first = publication();
+ const duplicate = {...first, metadata:{...first.metadata, title:'Duplicate'}};
+ const second = {...first, metadata:{...first.metadata, identifier:'second', title:'Second book'}};
+ for (const rootPublications of [[], [first]]) {
+  const catalog = {metadata:{title:'Mayberry Search'}, groups:[
+   {navigation:[]}, {publications:[first, duplicate]}, {publications:[second]},
+  ]};
+  if (rootPublications.length) catalog.publications = rootPublications;
+  const source = loadSource(async () => ({status:200, data:JSON.stringify(catalog)}), {get:async () => 'fixture'});
+  for (const results of [await source.search('test', 0), await source.getDiscoverItems('new', 0)]) {
+   assert.deepEqual(Array.from(results, item => item.title), ['Fixture Book', 'Second book']);
+   const details = await source.getBookDetails(results[0].id);
+   assert.equal(details.title, 'Fixture Book');
+   assert.equal(details.coverHeaders.Authorization, 'Basic ' + btoa('fixture:fixture'));
+  }
+ }
+});
+
 test('Legacy Atom entry mapping preserves original IDs, full covers and synopsis aliases', () => {
  const source = loadSource(async()=>{throw Error('Unexpected network call');});
  const text = value => ({text:()=>value});
@@ -118,7 +158,10 @@ test('Legacy Atom entry mapping preserves original IDs, full covers and synopsis
    link:[link({rel:'http://opds-spec.org/image/thumbnail',href:'/thumb.jpg'}),link({rel:'http://opds-spec.org/image',href:'/cover.jpg'}),link({rel:'http://opds-spec.org/acquisition',type:'application/epub+zip',href:'/book.epub'})],
   }[selector] || []),
  };
- const item = source._parseEntry(entry, 'https://mayberry.pub/opds/search');
+ const [item] = source._parseBooks({
+  doc:{querySelectorAll(selector) { assert.equal(selector, 'entry'); return [entry]; }},
+  url:'https://mayberry.pub/opds/search',
+ });
  assert.equal(item.id, 'urn:mayberry:book:fixture');
  assert.equal(item.cover, 'https://mayberry.pub/cover.jpg');
  assert.equal(item.url, 'https://mayberry.pub/book.epub');
@@ -148,6 +191,8 @@ test('Mayberry authentication failure is actionable and is never retried', async
  await assert.rejects(source.testConnection(),error=>error.status===401&&error.stopSearch&&/user ID/.test(error.message));
  assert.equal(count,1);
  await assert.rejects(source.resolve({url:'https://mayberry.pub/book.epub'}),/user ID/);
+ const rejected = loadSource(async () => ({status:403, data:'Access denied'}), {get:async () => 'fixture'});
+ await assert.rejects(rejected.search('test', 0), error => error.stopSearch && /user ID/.test(error.message));
 });
 
 test('changing Mayberry credentials invalidates cached results', async () => {
