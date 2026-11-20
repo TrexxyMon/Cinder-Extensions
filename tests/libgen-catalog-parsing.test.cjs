@@ -83,7 +83,9 @@ function downloadFixture({ file, editionHtml = '', probes }) {
     calls.push({ url, method, headers: options.headers || {} });
     const probeUrl = method === 'HEAD' && Object.keys(probes).find(value => new URL(value).href === new URL(url).href);
     if (probeUrl) {
-      const status = probes[probeUrl];
+      const reply = probes[probeUrl];
+      if (typeof reply === 'object') return reply;
+      const status = reply;
       return { status, data: '', headers: status === 200
         ? { 'content-type': 'application/epub+zip', 'content-length': '700000' }
         : { 'content-type': 'text/html' } };
@@ -131,7 +133,7 @@ test('LibGen deduplicates failed gateways and rejects unrelated CIDs and local l
       'http://localhost:8080/ipfs/' + cid,
       unavailable, unavailable,
     ]),
-    probes: { [keyed]: 503, [unavailable]: 404 },
+    probes: { [keyed]: 404, [unavailable]: 404 },
   });
   await assert.rejects(extension.resolve(item), /404|503|unavailable|another (?:result|edition)/i);
   assert.equal(calls.filter(call => call.method === 'HEAD' && new URL(call.url).href === new URL(unavailable).href).length, 1);
@@ -143,8 +145,34 @@ test('LibGen does not substitute an adjacent EPUB when the saved file metadata p
   const { extension, unexpected } = downloadFixture({
     file: otherFile,
     editionHtml: '<div>' + otherFile + '</div><div>' + fileMetadata(md5, cid, []) + '</div>',
-    probes: { [keyed]: 503 },
+    probes: { [keyed]: 404 },
   });
-  await assert.rejects(extension.resolve(item), /503|unavailable|another (?:result|edition)/i);
+  await assert.rejects(extension.resolve(item), /404|unavailable|another (?:result|edition)/i);
   assert.deepEqual(unexpected, []);
+});
+
+for (const status of [500, 502, 503, 504]) {
+  test('LibGen allows the native GET of the selected file after a HEAD ' + status, async () => {
+    const uncertain = gateway('gateway.ipfs.io');
+    const { extension, unexpected } = downloadFixture({
+      file: fileMetadata(md5, cid, [uncertain]),
+      probes: { [keyed]: status, [uncertain]: 405 },
+    });
+    const result = await extension.resolve(item);
+    assert.equal(result.url, keyed);
+    assert.equal(result.headers.Referer, landing);
+    assert.deepEqual(unexpected, []);
+    const noFileId = { ...item, extra: { md5, directUrl: landing } };
+    assert.equal((await extension.resolve(noFileId)).url, keyed);
+  });
+}
+
+test('LibGen respects Retry-After and definitive primary errors when no mirror serves the file', async () => {
+  for (const status of [401, 403, 404, 410, 429, 503]) {
+    const { extension } = downloadFixture({
+      file: fileMetadata(md5, cid, []),
+      probes: { [keyed]: { status, headers: status === 503 ? { 'Retry-After': '60' } : {} } },
+    });
+    await assert.rejects(extension.resolve(item), new RegExp('HTTP ' + status));
+  }
 });

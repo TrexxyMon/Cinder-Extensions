@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.10",
+	version: "0.1.11",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
@@ -624,7 +624,8 @@ __cinderExport = {
 	},
 
 	_probeFile: async function(url, headers, deadline) {
-		var timeout = this._remainingTime(deadline, 4500);
+		var timeout = deadline ? Math.min(4500, deadline - Date.now()) : 4500;
+		if (timeout <= 0) return { unknown: true, status: 0 };
 		var response;
 		try {
 			response = await cinder.fetch(url, { method: "HEAD", headers: headers, timeout: timeout });
@@ -634,11 +635,15 @@ __cinderExport = {
 		var status = response ? Number(response.status) || 0 : 0;
 		// Some storage servers allow GET but do not implement HEAD.
 		if (!status || status === 405 || status === 501) return { unknown: true, status: status };
-		if (status < 200 || status >= 300) return { status: status };
 		var metadata = {};
 		Object.keys(response.headers || {}).forEach(function(name) {
 			metadata[name.toLowerCase()] = String(response.headers[name]).toLowerCase().trim();
 		});
+		if (status < 200 || status >= 300) {
+			// A storage HEAD can return 503 while a GET of the same signed URL
+			// immediately returns the ebook. Only the transfer can settle this.
+			return { status: status, tryPrimaryGet: [500, 502, 503, 504].indexOf(status) >= 0 && !metadata["retry-after"] };
+		}
 		var type = (metadata["content-type"] || "").split(";")[0].trim();
 		if (status === 204 || metadata["content-length"] === "0" || /^(?:text\/|image\/|audio\/|video\/|application\/(?:json|xml|xhtml\+xml)$)/.test(type)) {
 			return { reason: "the server returned an empty file or a web page" };
@@ -702,13 +707,13 @@ __cinderExport = {
 			var available = urls.filter(function(_, i) { return checks[i].ok; });
 			var uncertain = urls.filter(function(_, i) { return checks[i].unknown && checks[i].status; });
 			var ordered = available.concat(uncertain);
-			if (ordered.length && (available.length || !primary || !probe || !probe.unknown)) {
+			if (ordered.length && (available.length || !probe || !(probe.unknown || probe.tryPrimaryGet))) {
 				var result = this._resolvedDownload(item, ordered[0], "", false);
 				if (ordered.length > 1) result.fallbackUrls = ordered.slice(1);
 				return result;
 			}
 		}
-		if (primary && probe && probe.unknown) return primary;
+		if (primary && probe && (probe.unknown || probe.tryPrimaryGet)) return primary;
 		var reason = probe ? (probe.reason || "HTTP " + probe.status) : (primaryError && primaryError.message);
 		throw new Error("LibGen could not serve this file" + (reason ? " (" + reason + ")" : "") + ". Retry later or choose another edition.");
 	},
