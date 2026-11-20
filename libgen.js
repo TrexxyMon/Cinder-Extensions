@@ -1,11 +1,12 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.12",
+	version: "0.1.13",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
 	contentTypes: ["ebook"],
+	downloadResults: { limit: 25, order: "source" },
 	excludeFromDefaultMetadataProviders: true,
 	_DEFAULT_BASE_URL: "https://libgen.li",
 	_USER_AGENT: "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
@@ -520,7 +521,9 @@ __cinderExport = {
 					id: id,
 					title: title,
 					author: author || undefined,
-					url: detailUrl,
+					// Several distinct files can share an edition, title and rounded
+					// size. Book Details uses this URL when deduplicating choices.
+					url: /^\d+$/.test(fileId) ? catalogUrl + "/file.php?id=" + fileId : detailUrl,
 					format: format,
 					size: size || undefined,
 						source: "LibGen",
@@ -654,7 +657,9 @@ __cinderExport = {
 	},
 
 	search: async function(query, page) {
-		var url = await this._searchUrl(query, page || 0);
+		// Some book providers prefix the searchable title with a numbered series.
+		var work = this._clean(query).match(/^.+?(?:,\s*(?:book|volume|vol\.?)\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)|\s+#\d+)\s*[:–—]\s*(.+)$/i);
+		var url = await this._searchUrl(work ? work[1] : query, page || 0);
 		cinder.log("[LibGen] Search: " + url);
 		// Search has a 15s caller deadline (30s for downloads/test connection).
 		// Do not inherit download retries: two 30s attempts continue running
@@ -666,7 +671,12 @@ __cinderExport = {
 		if (/<title>\s*Welcome to nginx!\s*<\/title>/i.test(html)) {
 			throw new Error("LibGen server returned a default web-server page instead of its catalog: " + url);
 		}
-		return await this._parseResults(html);
+		var results = await this._parseResults(html);
+		// A graphic adaptation can be much larger than the prose ebook. Keep
+		// both available and respect an explicit search for the adaptation.
+		var graphic = /\bgraphic novel\b/i;
+		if (!graphic.test(query)) results.sort(function(a, b) { return Number(graphic.test(a.title)) - Number(graphic.test(b.title)); });
+		return results;
 	},
 
 	_probeFile: async function(url, headers, deadline) {
@@ -825,7 +835,7 @@ __cinderExport = {
 			}
 		}
 
-		var pageUrl = this._absUrl(baseUrl, item.url || (item.extra ? item.extra.detailUrl : ""));
+		var pageUrl = this._absUrl(baseUrl, (item.extra && item.extra.detailUrl) || item.url);
 		if (!pageUrl) throw new Error("LibGen result has no detail URL to resolve.");
 
 		cinder.log("[LibGen] Resolve: " + pageUrl);

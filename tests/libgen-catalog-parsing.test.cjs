@@ -45,6 +45,26 @@ test('LibGen catalog entry is installable on Cinder 1.x and points to a pinned s
   assert.match(entry.scriptUrl, /^https:\/\/cdn\.jsdelivr\.net\/gh\/TrexxyMon\/Cinder-Extensions@[0-9a-f]{40}\/libgen\.js$/);
 });
 
+test('search keeps separate same-size files in Book Details and preserves the edition page', async () => {
+  const row = (id, title) => '<tr><td><a href="edition.php?id=100">' + title + '</a></td><td>A</td><td>P</td><td>2000</td><td>English</td><td>300</td><td><a href="file.php?id=' + id + '">1 MB</a></td><td>EPUB</td><td></td></tr>';
+  const graphic = 'The Son of Neptune (Graphic Novel)', prose = 'The Son of Neptune';
+  const html = '<table class="table-striped">' + row(201, graphic) + row(202, prose) + row(203, prose) + '</table>';
+  const seen = [];
+  const extension = source({ fetch: async url => { seen.push(url); return { status: 200, data: html }; } });
+  const results = await extension.search('Heroes of Olympus, Book Two: The Son of Neptune', 0);
+  assert.equal(seen.length, 1);
+  assert.match(seen[0], /The\+Son\+of\+Neptune/i);
+  assert.doesNotMatch(seen[0], /Olympus/i);
+  assert.equal(results.length, 3);
+  assert.equal(results[0].url, 'https://libgen.li/file.php?id=202');
+  assert.equal(results[1].url, 'https://libgen.li/file.php?id=203');
+  assert.equal(results[0].extra.detailUrl, 'https://libgen.li/edition.php?id=100');
+  assert.equal(results[2].title, graphic);
+  assert.equal((await extension.search('The Son of Neptune Graphic Novel', 0))[0].title, graphic);
+  assert.equal(extension.downloadResults.limit, 25);
+  assert.equal(extension.downloadResults.order, 'source');
+});
+
 const md5 = '1'.repeat(32);
 const otherMd5 = '2'.repeat(32);
 const cid = 'bafykbzaceaallwghbxwfa2qmnxdajkztjc5nbqz3pzwcgucqxc33mdz63ky3s';
