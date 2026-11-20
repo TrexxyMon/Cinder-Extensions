@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.14",
+	version: "0.1.15",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
@@ -27,11 +27,6 @@ __cinderExport = {
 
 	getSettings: function() {
 		return [
-			{
-				id: "availability", label: "Download results", type: "select", defaultValue: "verified",
-				options: [{ label: "Files that pass a download check", value: "verified" }, { label: "All catalog results", value: "all" }],
-				subtitle: "Shows files that served ebook or comic bytes during this search. Choose All catalog results to include unchecked editions.",
-			},
 			{
 				id: "base_url",
 				label: "Base URL",
@@ -662,7 +657,6 @@ __cinderExport = {
 	},
 
 	search: async function(query, page) {
-		var deadline = Date.now() + 13200;
 		// Some book providers prefix the searchable title with a numbered series.
 		var work = this._clean(query).match(/^.+?(?:,\s*(?:book|volume|vol\.?)\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)|\s+#\d+)\s*[:–—]\s*(.+)$/i);
 		var url = await this._searchUrl(work ? work[1] : query, page || 0);
@@ -682,98 +676,7 @@ __cinderExport = {
 		// both available and respect an explicit search for the adaptation.
 		var graphic = /\bgraphic novel\b/i;
 		if (!graphic.test(query)) results.sort(function(a, b) { return Number(graphic.test(a.title)) - Number(graphic.test(b.title)); });
-		if (!results.length || await this._getSetting("availability", "verified") === "all") return results;
-		return this._availableResults(results, deadline);
-	},
-
-	_availableResults: async function(results, deadline) {
-		var self = this, next = 0, keep = [], catalog = await this._getBaseUrl();
-		var legacyBudget = { bytes: 8 * 1024 * 1024 };
-		var workers = Array.from({ length: Math.min(3, results.length) }, async function() {
-			while (next < results.length && Date.now() < deadline) {
-				var index = next++, item = results[index];
-				try { keep[index] = !!await self._checkResult(item, catalog, deadline, legacyBudget); }
-				catch (err) { if (err && err.name === "AbortError") throw err; }
-			}
-		});
-		await Promise.all(workers);
-		if (!keep.some(Boolean)) throw new Error("No files on this page passed the download check. Retry later or select All catalog results in LibGen settings.");
-		return results.filter(function(_, i) { return keep[i]; });
-	},
-
-	// Keep signed URLs in memory briefly. Never cache failure as a property of the book.
-	_checkedFiles: new Map(),
-	_checkResult: async function(item, catalog, deadline, legacyBudget) {
-		var extra = item.extra || {}, md5 = this._clean(extra.md5).toLowerCase();
-		var key = catalog + "|" + item.id + "|" + item.url, cached = this._checkedFiles.get(key);
-		if (cached && cached.until > Date.now()) return true;
-		this._checkedFiles.delete(key);
-		var self = this, seen = new Set();
-		async function check(file) {
-			if (!file || !file.url || file.downloadRequest || seen.has(file.url) || Date.now() >= deadline) return false;
-			seen.add(file.url);
-			var response = await self._fileStart(file, deadline, item, legacyBudget);
-			if (!response || !self._matchesFileStart(response, item.format)) return false;
-			self._useStorageRedirect(file, { ok: true, responseUrl: response.url }, md5);
-			self._checkedFiles.set(key, { until: Date.now() + 60000, file: file });
-			while (self._checkedFiles.size > 100) self._checkedFiles.delete(self._checkedFiles.keys().next().value);
-			return true;
-		}
-		var advertised = this._catalogGetUrl(extra.catalogGet, catalog, md5);
-		if (advertised && await check(this._resolvedDownload(item, advertised, item.url, false))) return true;
-		if (Date.now() >= deadline) return false;
-		var mirror = this._fileMirrorUrl(extra.fileMirror, md5, extra.fileId);
-		if (mirror && await check(this._resolvedDownload(item, mirror, "", false))) return true;
-		if (Date.now() >= deadline) return false;
-		var hasFile = /^[a-f0-9]{32}$/.test(md5) && /^\d+$/.test(extra.fileId || "");
-		try {
-			if (await check(await this._resolvePrimary(item, md5, hasFile, deadline))) return true;
-		} catch (err) { if (err && err.name === "AbortError") throw err; }
-		return false;
-	},
-
-	_matchesFileStart: function(response, format) {
-		if (response.status !== 200 && response.status !== 206 || !response.data) return false;
-		var bytes = atob(response.data.slice(0, 172));
-		if (format === "pdf") return bytes.indexOf("%PDF-") === 0;
-		if (format === "cbr") return bytes.indexOf("Rar!\x1a\x07") === 0;
-		if (bytes.indexOf("PK\x03\x04") !== 0) return false;
-		return format === "cbz" || format === "epub" && bytes.indexOf("application/epub+zip") >= 0;
-	},
-
-	_fileStart: async function(file, deadline, item, legacyBudget) {
-		if (typeof cinder.fetchFilePrefix === "function")
-			return cinder.fetchFilePrefix(file.url, file.headers, this._remainingTime(deadline, 2000));
-		// Older apps buffer a response. Restrict the probe to small files and
-		// share the size allowance across all workers in this search.
-		if (typeof cinder.fetchBase64 !== "function") return;
-		var extra = item.extra || {};
-		var published = this._fileMirrorUrl(extra.fileMirror, this._clean(extra.md5).toLowerCase(), extra.fileId);
-		var listed = /^(\d+(?:\.\d+)?)\s*(kb|kib|mb|mib)$/i.exec(item.size || "");
-		// This catalog-published file API returns an HTML page to HEAD and
-		// dispatches GET to storage. On buffering clients allow the GET only
-		// for small advertised files. Large files use the streaming host API.
-		var listedKB = listed ? Number(listed[1]) * (/^m/i.test(listed[2]) ? 1024 : 1) : 0;
-		var smallAlternate = published === file.url && listedKB > 0 && listedKB <= 2048;
-		var target = file.url;
-		var size = (listedKB + 512) * 1024; // The catalog rounds its displayed sizes.
-		if (!smallAlternate) {
-			var head = await cinder.fetch(file.url, { method: "HEAD", headers: file.headers, timeout: this._remainingTime(deadline, 1600) });
-			var metadata = {};
-			Object.keys(head.headers || {}).forEach(function(k) { metadata[k.toLowerCase()] = head.headers[k]; });
-			size = Number(metadata["content-length"]);
-			if (head.status !== 200 || !(size >= 5 && size <= 3 * 1024 * 1024) || /text|html|json/i.test(metadata["content-type"] || "")) return;
-			target = head.url || file.url;
-		}
-		if (size > legacyBudget.bytes) return;
-		legacyBudget.bytes -= size;
-		var request = Object.assign({}, file.headers, { Range: "bytes=0-127" });
-		var response = await cinder.fetchBase64(target, { headers: request, timeout: this._remainingTime(deadline, 4200) });
-		if (response.status === 206 && !Object.keys(response.headers || {}).some(function(k) {
-			return k.toLowerCase() === "content-range" && /^bytes 0-/i.test(response.headers[k]);
-		})) return;
-		if (response.status === 206 && response.data && response.data.length <= 172) legacyBudget.bytes += Math.max(0, size - 128);
-		return response;
+		return results;
 	},
 
 	_probeFile: async function(url, headers, deadline) {
@@ -833,26 +736,33 @@ __cinderExport = {
 		var hasFile = /^[a-f0-9]{32}$/.test(md5) && /^\d+$/.test(fileId);
 		var mirrorUrl = this._fileMirrorUrl(extra.fileMirror, md5, fileId);
 		var catalogUrl = await this._getBaseUrl();
-		var cached = this._checkedFiles.get(catalogUrl + "|" + item.id + "|" + item.url);
-		if (cached && cached.until > Date.now()) return cached.file;
 		var catalogGet = this._catalogGetUrl(extra.catalogGet, catalogUrl, md5);
 		if (catalogGet) {
 			var advertised = this._resolvedDownload(item, catalogGet, item.url, false);
+			if (mirrorUrl) {
+				advertised.fallbackUrls = [mirrorUrl];
+				return advertised;
+			}
 			var advertisedProbe = await this._probeFile(catalogGet, advertised.headers, deadline);
 			if (advertisedProbe.ok) {
 				this._useStorageRedirect(advertised, advertisedProbe, md5);
-				if (mirrorUrl) advertised.fallbackUrls = (advertised.fallbackUrls || []).concat(mirrorUrl);
 				return advertised;
 			}
 		}
 		var primary, primaryError, probe;
+		var primaryDeadline = mirrorUrl ? Math.min(deadline, Date.now() + 3000) : deadline;
 		try {
-			primary = await this._resolvePrimary(item, md5, hasFile, deadline);
-			if (!this._isKeyedDownloadUrl(primary.url) || (primary.downloadRequest && primary.downloadRequest.method === "POST")) return primary;
-			probe = await this._probeFile(primary.url, primary.headers, deadline);
+			primary = await this._resolvePrimary(item, md5, hasFile, primaryDeadline);
+			if (mirrorUrl && !primary.downloadRequest) {
+				// The native downloader tries these GETs in order. A mirror's HEAD
+				// can return an HTML page even when its GET redirects to the book.
+				primary.fallbackUrls = [mirrorUrl];
+				return primary;
+			}
+			if (!this._isKeyedDownloadUrl(primary.url) || primary.downloadRequest) return primary;
+			probe = await this._probeFile(primary.url, primary.headers, primaryDeadline);
 			this._useStorageRedirect(primary, probe, md5);
 			if ((probe.ok && (!hasFile || typeof extra.fileMirror === "string")) || (probe.unknown && !hasFile)) {
-				if (mirrorUrl) primary.fallbackUrls = (primary.fallbackUrls || []).concat(mirrorUrl);
 				return primary;
 			}
 		} catch (err) {
@@ -860,21 +770,31 @@ __cinderExport = {
 			primaryError = err;
 		}
 		if (hasFile) {
+			// The primary landing page failed before it could yield a file URL.
+			if (mirrorUrl) return this._resolvedDownload(item, mirrorUrl, "", false);
 			var fileUrl = await this._placeholderDownloadUrl(fileId, item.format, {}, catalogUrl);
 			var urls = [];
 			try {
 				var file = await this._fetchPage(fileUrl, item.url, { timeout: 5500, retry: false, deadline: deadline });
 				urls = this._fileGateways(file.html, md5);
-				if (!mirrorUrl) {
-					var published = this._findFileMirror(cinder.parseHTML(file.html), md5, fileId);
-					mirrorUrl = this._fileMirrorUrl(published, md5, fileId);
-				}
+				var published = this._findFileMirror(cinder.parseHTML(file.html), md5, fileId);
+				mirrorUrl = this._fileMirrorUrl(published, md5, fileId);
 			} catch (metadataError) {
 				if (metadataError && metadataError.name === "AbortError") throw metadataError;
 				if (!primaryError) primaryError = metadataError;
 			}
 			var self = this;
-			if (mirrorUrl) urls.unshift(mirrorUrl);
+			if (mirrorUrl) {
+				// A saved catalog row can predate fileMirror. Recover the published
+				// GET from the same file's metadata and preserve its exact gateways.
+				if (primary && probe && (probe.ok || probe.unknown || probe.tryPrimaryGet)) {
+					primary.fallbackUrls = (primary.fallbackUrls || []).concat(mirrorUrl, urls);
+					return primary;
+				}
+				var alternate = this._resolvedDownload(item, mirrorUrl, "", false);
+				if (urls.length) alternate.fallbackUrls = urls;
+				return alternate;
+			}
 			if (probe && probe.ok) {
 				if (urls.length) primary.fallbackUrls = (primary.fallbackUrls || []).concat(urls);
 				return primary;
@@ -889,9 +809,6 @@ __cinderExport = {
 			var ordered = available.concat(uncertain);
 			var canTryPrimary = primary && probe && (probe.unknown || probe.tryPrimaryGet);
 			if (canTryPrimary && !available.length) {
-				// The published API often serves HTML to HEAD but forwards GET
-				// to the exact ebook. Preserve that transfer fallback.
-				if (mirrorUrl && checks[urls.indexOf(mirrorUrl)].reason && ordered.indexOf(mirrorUrl) < 0) ordered.push(mirrorUrl);
 				if (ordered.length) primary.fallbackUrls = ordered;
 				return primary;
 			}
