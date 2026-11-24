@@ -200,7 +200,7 @@
                            "description":  "Search manga from MangaDex.org - free, community-run manga platform",
                            "language":  "Multilingual",
                            "contentType":  "manga",
-                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions@main/mangadex.js",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/22b2aa680fe53075500cf5448ead00cd0dd3ff67/mangadex.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "manga"
