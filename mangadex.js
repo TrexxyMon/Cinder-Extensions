@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "mangadex",
 	name: "MangaDex",
-	version: "1.0.10",
+	version: "1.0.11",
 	icon: "ðŸ“–",
 	description: "Search manga from MangaDex.org â€” free, community-run manga platform",
 	contentType: "manga",
@@ -32,7 +32,7 @@ __cinderExport = {
 
 	_getCoverUrl(mangaId, coverId, fileName) {
 		if (!fileName) return undefined;
-		return `https://uploads.mangadex.org/covers/${mangaId}/${fileName}.256.jpg`;
+		return `https://uploads.mangadex.org/covers/${mangaId}/${fileName}.512.jpg`;
 	},
 
 	_getRelationship(relationships, type) {

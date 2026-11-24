@@ -196,7 +196,7 @@
                        {
                            "id":  "mangadex",
                            "name":  "MangaDex",
-                           "version":  "1.0.10",
+                           "version":  "1.0.11",
                            "description":  "Search manga from MangaDex.org - free, community-run manga platform",
                            "language":  "Multilingual",
                            "contentType":  "manga",
