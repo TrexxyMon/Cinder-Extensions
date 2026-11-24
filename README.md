@@ -16,6 +16,9 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 
 | Extension | Type | Description |
 |---|---|---|
+| **FullLengthAudioBooks** | Audiobooks | Stream or download audiobooks, including editions with tracks spread across several pages. No debrid required. |
+| **BookAudioBooks** | Audiobooks | Search and browse recent titles, then stream or download their tracks in order. No debrid required. |
+| **Audiozaic** | Audiobooks | Download the numbered MP3 parts together for offline listening. No debrid required. |
 | **[GoldenAudiobooks](docs/goldenaudiobooks.md)** | Audiobooks | **No debrid required.** On-device browsing/search with ordered direct audio downloads for offline listening. |
 | **[AudioBookBay](docs/audiobookbay.md)** | Audiobooks | On-device search, release details and optional discovery shelves; **Debrid required** for downloads. |
 | **[Knaben Audiobooks](docs/knaben-audiobooks.md)** | Audiobooks | Audiobook-only API search, optional discovery shelves, and release availability counts; **Debrid required** for downloads. |
@@ -57,6 +60,11 @@ Extensions are JavaScript plugins that add content sources to Cinder. They run i
 
 ### Audiobook extensions
 
+FullLengthAudioBooks and BookAudioBooks let you stream a title or download all
+its tracks in order. Audiozaic starts the site's countdowns when you tap
+**Download**. Allow about a minute for the links, then listen to the download
+as one library entry. All three sources require Cinder `1.2.4` or later.
+
 GoldenAudiobooks offers direct audio downloads for offline listening: **no debrid
 account is required**. Downloads need an audiobook-capable Cinder build (manifest
 minimum `1.2.4`). Version `0.1.2-cinder` disables online Listen in Cinder builds
@@ -70,9 +78,11 @@ preparation, track selection, downloads, and playback. These extensions do not
 need their own debrid API keys. An uncached release depends on source availability
 and the selected provider; a result is not a guarantee of a completed download.
 
-All four audiobook extensions moved from the private testing repository on November 11,
-2026. Add this repository, refresh both catalogs, and update the installed
-extensions without uninstalling. Their existing extension IDs, release IDs, and
+GoldenAudiobooks, AudioBookBay, Knaben Audiobooks, and The Pirate Bay Audiobooks
+moved from the private testing repository on November 11, 2026. FullLengthAudioBooks,
+BookAudioBooks, and Audiozaic moved on November 23, 2026. Add this repository,
+refresh both catalogs, and update the installed extensions without uninstalling.
+Their existing extension IDs, release IDs, and
 settings keys remain unchanged. The previous private scripts are retained for
 older cached manifests; new updates are published here.
 
