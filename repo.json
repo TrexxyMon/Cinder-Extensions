@@ -24,7 +24,7 @@
                            "excludeFromDefaultMetadataProviders": true,
                            "browser": { "startUrl": "https://fulllengthaudiobooks.com/" },
                            "capabilities": { "search": true, "searchDownloads": true, "resolve": true, "resolveOnDownload": true, "audioStreaming": true, "discover": true, "download": false, "manga": false },
-                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/fulllengthaudiobooks.js",
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/5e2a83ee7aae45ccff07a74f37cc4cd3253cc4f5/fulllengthaudiobooks.js",
                            "minCinderVersion": "1.2.4"
                        },
                        {
@@ -39,7 +39,7 @@
                            "excludeFromDefaultMetadataProviders": true,
                            "browser": { "startUrl": "https://bookaudiobooks.com/" },
                            "capabilities": { "search": true, "searchDownloads": true, "resolve": true, "resolveOnDownload": true, "audioStreaming": true, "discover": true, "download": false, "manga": false },
-                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/bookaudiobooks.js",
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/5e2a83ee7aae45ccff07a74f37cc4cd3253cc4f5/bookaudiobooks.js",
                            "minCinderVersion": "1.2.4"
                        },
                        {
@@ -54,7 +54,7 @@
                            "excludeFromDefaultMetadataProviders": true,
                            "browser": { "startUrl": "https://audiozaic.com/" },
                            "capabilities": { "search": true, "searchDownloads": true, "resolve": true, "resolveOnDownload": true, "audioStreaming": false, "discover": true, "download": false, "manga": false },
-                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/audiozaic.js",
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/5e2a83ee7aae45ccff07a74f37cc4cd3253cc4f5/audiozaic.js",
                            "minCinderVersion": "1.2.4"
                        },
                        {
